@@ -24,7 +24,7 @@ The first time you run it it will ask you for a chart file. I've included one wi
 
 Before clicking the desired calibration point on the chart you need to do the following:
 
-In Little Navmap, browse to the airport you want and find exactly the same point, then right-click it and select More -> Copy to clipboard.
+In Little Navmap, browse to the airport you want and find exactly the same point, then right-click it and select More > Copy to clipboard.
 If you don't have Little Navmap you can use your browser and go to https://www.openstreetmap.org/search?query=egll#map=14/51.4678/-0.4548 for example, right-click on the map and select 'Centre map here' then copy the contents of the browser's address bar into your clipboard (select, then Ctrl C).
 
 Once your chart is calibrated just run FS2020. When you load into the airport your aircraft will appear on the chart.

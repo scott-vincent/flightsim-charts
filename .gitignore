@@ -1,0 +1,10 @@
+.git
+.vs
+packages
+Releases
+x64
+**/debug
+**/Debug
+**/release
+**/Release
+**/~AutoRecover*

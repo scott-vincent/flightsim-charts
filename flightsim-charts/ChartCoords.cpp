@@ -90,6 +90,45 @@ void chartPosToLocation(int x, int y, Location* loc)
 }
 
 /// <summary>
+/// Returns formatted co-ordinate, e.g. 51° 28' 29.60"
+/// </summary>
+void coordToString(double coord, char* str)
+{
+    const char DegreesSymbol[] = "\xC2\xB0";
+
+    int degs = coord;
+    double secs = (coord - degs) * 3600.00;
+    int mins = secs / 60.0;
+    secs -= mins * 60;
+
+    sprintf(str, "%d%s %d' %.2f\"", degs, DegreesSymbol, mins, secs + 0.005);
+}
+
+/// <summary>
+/// Returns formatted location, e.g. 51° 28' 29.60" N 0° 29' 5.19" W
+/// </summary>
+void locationToString(Location* loc, char* str)
+{
+    char latStr[32];
+    char lonStr[32];
+    char latDirn = 'N';
+    char lonDirn = 'E';
+
+    coordToString(abs(loc->lat), latStr);
+    coordToString(abs(loc->lon), lonStr);
+
+    if (loc->lat < 0) {
+        latDirn = 'S';
+    }
+
+    if (loc->lon < 0) {
+        lonDirn = 'W';
+    }
+
+    sprintf(str, "%s %c %s %c", latStr, latDirn, lonStr, lonDirn);
+}
+
+/// <summary>
 /// Calculate distance between two places using great circle route.
 /// Returns the distance in nautical miles.
 /// </summary>

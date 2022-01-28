@@ -17,6 +17,7 @@ const char AircraftOtherFile[] = "aircraft_other.png";
 const char AircraftSmallOtherFile[] = "aircraft_small_other.png";
 const char LabelFile[] = "label.png";
 const char MarkerFile[] = "marker.png";
+const char RingFile[] = "ring.png";
 const int DataRateFps = 6;
 const int MinScale = 40;
 const int MaxScale = 150;
@@ -48,6 +49,7 @@ ALLEGRO_BITMAP* _aircraftLabelBmpCopy;
 char _labelText[256];
 char _tagText[68];
 DrawData _marker;
+DrawData _ring;
 MouseData _mouseData;
 ChartData _chartData;
 ProgramData _programData;
@@ -64,7 +66,10 @@ int _titleState;
 int _titleDelay;
 bool _menuActive = false;
 bool _showTags = true;
-bool _showMarkers = false;
+bool _showCalibration = false;
+Location _clickedLoc;
+Position _clickedPos;
+Position _clipboardPos;
 
 
 /// <summary>
@@ -82,6 +87,7 @@ void initVars()
     _aircraft.smallOtherBmp = NULL;
     _aircraftLabel.bmp = NULL;
     _marker.bmp = NULL;
+    _ring.bmp = NULL;
     _aircraftLabelBmpCopy = NULL;
 
     _mouseData.dragging = false;
@@ -101,6 +107,9 @@ void initVars()
     strcpy(_chartData.title, ProgramName);
     _chartData.state = -1;
     _titleState = -2;
+    _clickedLoc.lat = 99999;
+    _clickedPos.x = -1;
+    _clipboardPos.x = -1;
 }
 
 /// <summary>
@@ -205,6 +214,7 @@ void cleanup()
     cleanupBitmap(_aircraftLabel.bmp);
     cleanupBitmap(_aircraftLabelBmpCopy);
     cleanupBitmap(_marker.bmp);
+    cleanupBitmap(_ring.bmp);
 
     // Clenaup tags
     for (int i = 0; i < _tagCount; i++) {
@@ -316,7 +326,15 @@ void updateWindowTitle()
         al_set_window_title(_display, title);
         break;
     default:
-        al_set_window_title(_display, _chartData.title);
+        if (_showCalibration && _clickedLoc.lat != 99999) {
+            char str[64];
+            locationToString(&_clickedLoc, str);
+            sprintf(title, "%s   %s", _chartData.title, str);
+            al_set_window_title(_display, title);
+        }
+        else {
+            al_set_window_title(_display, _chartData.title);
+        }
         break;
     }
 
@@ -462,6 +480,21 @@ bool initMarker()
     return true;
 }
 
+bool initRing()
+{
+    _ring.bmp = al_load_bitmap(RingFile);
+    if (!_ring.bmp) {
+        printf("Missing file: %s\n", RingFile);
+        return false;
+    }
+
+    _ring.width = al_get_bitmap_width(_ring.bmp);
+    _ring.height = al_get_bitmap_height(_ring.bmp);
+    _ring.scale = 0.3;
+
+    return true;
+}
+
 void drawOwnAircraft()
 {
     if (_aircraft.x == 99999) {
@@ -594,7 +627,7 @@ void render()
     drawOtherAircraft();
 
     // Draw first marker or both if a message is being displayed
-    if (_chartData.state == 1 || (_chartData.state == 2 && (_titleState == -9 || _showMarkers))) {
+    if (_chartData.state == 1 || (_chartData.state == 2 && (_titleState == -9 || _showCalibration))) {
         int width = _marker.width * _marker.scale;
         int height = _marker.height * _marker.scale;
 
@@ -602,6 +635,29 @@ void render()
             int x = _chartData.x[i] * _zoomed.scale - destX;
             int y = _chartData.y[i] * _zoomed.scale - destY;
             al_draw_scaled_bitmap(_marker.bmp, 0, 0, _marker.width, _marker.height, x - width / 2, y - height / 2, width, height, 0);
+        }
+    }
+
+    // Show clicked and clipboard positions when in calibration mode
+    if (_chartData.state == 2 && _showCalibration) {
+        if (_clickedPos.x != -1) {
+            // Show clicked position as a small cross
+            int width = _marker.width * _marker.scale / 2.0;
+            int height = _marker.height * _marker.scale / 2.0;
+
+            int x = _clickedPos.x * _zoomed.scale - destX;
+            int y = _clickedPos.y * _zoomed.scale - destY;
+            al_draw_scaled_bitmap(_marker.bmp, 0, 0, _marker.width, _marker.height, x - width / 2, y - height / 2, width, height, 0);
+        }
+
+        if (_clipboardPos.x != -1) {
+            // Show clipboard position as a circle
+            int width = _ring.width * _ring.scale;
+            int height = _ring.height * _ring.scale;
+
+            int x = _clipboardPos.x * _zoomed.scale - destX;
+            int y = _clipboardPos.y * _zoomed.scale - destY;
+            al_draw_scaled_bitmap(_ring.bmp, 0, 0, _ring.width, _ring.height, x - width / 2, y - height / 2, width, height, 0);
         }
     }
 
@@ -638,6 +694,10 @@ bool doInit()
     }
 
     if (!initMarker()) {
+        return false;
+    }
+
+    if (!initRing()) {
         return false;
     }
 
@@ -751,13 +811,27 @@ void newChart()
 }
 
 /// <summary>
+/// When viewing calibration the last point clicked (small cross) and the
+/// last location retrieved from the clipboard (circle) may be displayed.
+/// </summary>
+void clearCustomPoints()
+{
+    _clickedLoc.lat = 99999;
+    _clickedPos.x = -1;
+    _clipboardPos.x = -1;
+    _titleState = -2;
+}
+
+/// <summary>
 /// A menu item has been clicked
 /// </summary>
 void menuAction()
 {
     switch (_menuSelect.x) {
         case 1:
+            // Load chart
             newChart();
+            _showCalibration = false;
             break;
 
         case 2:
@@ -770,13 +844,15 @@ void menuAction()
         case 3:
             // Show calibration
             if (_chartData.state == 2) {
-                _showMarkers = !_showMarkers;
+                _showCalibration = !_showCalibration;
             }
+            clearCustomPoints();
             break;
 
         case 4:
             // Re-calibrate
             _chartData.state = 0;
+            _showCalibration = false;
             // Little Navmap is now the preferred way to calibrate so don't launch OpenStreetMap.
             //launchOpenStreetMap();
             break;
@@ -1001,6 +1077,18 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
                 _mouseData.dragging = true;
                 _mouseData.dragStartX = _mouse.x;
                 _mouseData.dragStartY = _mouse.y;
+
+                // Show clicked coord in window title if showing calibration
+                if (_showCalibration && _chartData.state == 2) {
+                    displayToChartPos(_mouse.x, _mouse.y, &_clickedPos);
+                    chartPosToLocation(_clickedPos.x, _clickedPos.y, &_clickedLoc);
+
+                    Location loc;
+                    getClipboardLocation(&loc);
+                    locationToChartPos(loc.lat, loc.lon, &_clipboardPos);
+
+                    _titleState = -2;
+                }
             }
         }
         else {
@@ -1018,7 +1106,14 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
         if (isPress) {
             // Right mouse button pressed
             if (_chartData.state == 0 || _chartData.state == 1) {
-                capturePosition(_mouse.x, _mouse.y);
+                Location loc;
+                getClipboardLocation(&loc);
+                if (loc.lat == 99999) {
+                    showMessage("ERROR: Use Little Navmap (right-click/More/Copy to clipboard) or OpenStreetMap (right-click/Centre map here/Copy URL).");
+                }
+                else {
+                    saveCalibration(_mouse.x, _mouse.y, &loc);
+                }
             }
             else {
                 _menu.x = _mouse.x - 3;

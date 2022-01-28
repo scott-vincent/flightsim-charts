@@ -302,9 +302,10 @@ void launchOpenStreetMap()
 }
 
 /// <summary>
-/// Get chart position from mouse cords and location from clipboard
+/// Reads coordinates from clipboard. Clipboard can be from Little Navmap or OpenStreetMap.
+/// Returns 99999 if no valid location found.
 /// </summary>
-void capturePosition(int x, int y)
+void getClipboardLocation(Location* loc)
 {
     // Make sure required data is in clipboard
     char text[256];
@@ -321,9 +322,8 @@ void capturePosition(int x, int y)
         CloseClipboard();
     }
 
-    Location loc;
-    loc.lat = 99999;
-    loc.lon = 99999;
+    loc->lat = 99999;
+    loc->lon = 99999;
 
     if (strchr(text, '°')) {
         // Little Navmap format, e.g. 51° 28' 29.60" N 0° 29' 5.19" W
@@ -335,16 +335,16 @@ void capturePosition(int x, int y)
         int count = sscanf(text, "%d° %d' %lf\" %c", &deg, &min, &sec, &dirn);
         char* next = strchr(text, dirn);
         if (count == 4 && next) {
-            loc.lat = deg + (min / 60.0) + (sec / 3600.0);
+            loc->lat = deg + (min / 60.0) + (sec / 3600.0);
             if (dirn == 'S') {
-                loc.lat = -loc.lat;
+                loc->lat = -loc->lat;
             }
             next++;
             count = sscanf(next, "%d° %d' %lf\" %c", &deg, &min, &sec, &dirn);
             if (count == 4) {
-                loc.lon = deg + (min / 60.0) + (sec / 3600.0);
+                loc->lon = deg + (min / 60.0) + (sec / 3600.0);
                 if (dirn == 'W') {
-                    loc.lon = -loc.lon;
+                    loc->lon = -loc->lon;
                 }
             }
         }
@@ -353,20 +353,17 @@ void capturePosition(int x, int y)
         // OpenStreetMap format, e.g. https://www.openstreetmap.org/#map=14/51.4706/-0.4540
         char* last = strrchr(text, '/');
         if (last) {
-            loc.lon = strtod(last + 1, NULL);
+            loc->lon = strtod(last + 1, NULL);
             *last = '\0';
         }
 
         last = strrchr(text, '/');
         if (last) {
-            loc.lat = strtod(last + 1, NULL);
+            loc->lat = strtod(last + 1, NULL);
         }
     }
 
-    if (loc.lat == 99999 || loc.lon == 99999) {
-        showMessage("ERROR: Use Little Navmap (right-click/More/Copy to clipboard) or OpenStreetMap (right-click/Centre map here/Copy URL).");
-    }
-    else {
-        saveCalibration(x, y, &loc);
+    if (loc->lon == 99999) {
+        loc->lat = 99999;
     }
 }

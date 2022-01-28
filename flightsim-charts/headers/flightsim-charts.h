@@ -3,7 +3,7 @@
 #include <allegro5/allegro_image.h>
 
 // Constants
-const int MAX_AIRCRAFT = 50;
+const int MAX_AIRCRAFT = 150;
 const int AIRCRAFT_RANGE = 8000;  // metres
 const int WINGSPAN_SMALL = 60;      // feet
 

@@ -10,14 +10,14 @@
 
 // Constants
 const char ProgramName[] = "FlightSim Charts";
-const char MenuFile[] = "menu.png";
-const char AircraftFile[] = "aircraft.png";
-const char AircraftSmallFile[] = "aircraft_small.png";
-const char AircraftOtherFile[] = "aircraft_other.png";
-const char AircraftSmallOtherFile[] = "aircraft_small_other.png";
-const char LabelFile[] = "label.png";
-const char MarkerFile[] = "marker.png";
-const char RingFile[] = "ring.png";
+const char MenuFile[] = "images/menu.png";
+const char AircraftFile[] = "images/aircraft.png";
+const char AircraftSmallFile[] = "images/aircraft_small.png";
+const char AircraftOtherFile[] = "images/aircraft_other.png";
+const char AircraftSmallOtherFile[] = "images/aircraft_small_other.png";
+const char LabelFile[] = "images/label.png";
+const char MarkerFile[] = "images/marker.png";
+const char RingFile[] = "images/ring.png";
 const int DataRateFps = 6;
 const int MinScale = 40;
 const int MaxScale = 150;

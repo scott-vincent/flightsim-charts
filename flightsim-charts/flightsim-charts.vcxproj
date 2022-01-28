@@ -120,6 +120,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>headers;$(MSFS_SDK)\SimConnect SDK\include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -135,6 +136,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>headers;C:\MSFS SDK\SimConnect SDK\include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -150,6 +152,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>headers;$(MSFS_SDK)\SimConnect SDK\include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -165,6 +168,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;NDEBUG;_CONSOLE</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <AdditionalIncludeDirectories>headers;$(MSFS_SDK)\SimConnect SDK\include</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -175,19 +179,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="ChartCoords.cpp" />
-    <ClCompile Include="Chart.cpp" />
-    <ClCompile Include="ChartFile.cpp" />
-    <ClCompile Include="flightsim-charts.cpp" />
-    <ClCompile Include="Server.cpp" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ChartCoords.h" />
-    <ClInclude Include="ChartFile.h" />
-    <ClInclude Include="flightsim-charts.h" />
+    <ClInclude Include="headers\ChartCoords.h" />
+    <ClInclude Include="headers\ChartFile.h" />
+    <ClInclude Include="headers\flightsim-charts.h" />
     <ClInclude Include="resource.h" />
   </ItemGroup>
   <ItemGroup>
@@ -195,6 +192,13 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="flightsim-charts.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\Chart.cpp" />
+    <ClCompile Include="src\ChartCoords.cpp" />
+    <ClCompile Include="src\ChartFile.cpp" />
+    <ClCompile Include="src\flightsim-charts.cpp" />
+    <ClCompile Include="src\Server.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

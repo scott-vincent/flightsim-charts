@@ -34,6 +34,7 @@ This program must run on the same host as MS FS2020 and uses the Microsoft SimCo
 # Calibration Check
 
 If you want to confirm your chart is calibrated correctly use the Show Calibration option on the right-click menu. This will show two red crosses at the two points you calibrated but it also allows you to check any other points on the chart.
+
 Any point can be checked using Little Navmap. Right click on the point in Little Navmap and copy it to the clipboard (More > Copy location to clipboard). Now left click on the same point on the chart. As long as 'Show Calibration' is active a small red cross and a red circle will appear. If your calibration is correct the cross will be in the centre of the circle. If it is way out then consider re-calibrating the chart, maybe by choosing different points from the ones you chose before.  
 
 # Command Window

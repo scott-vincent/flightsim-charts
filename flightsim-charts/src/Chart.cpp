@@ -362,6 +362,16 @@ bool initMenu()
     return true;
 }
 
+/// <summary>
+/// Zoom fully out
+/// </summary>
+void initZoomedOut()
+{
+    al_get_mouse_state(&_mouse);
+    _mouseStartZ = -(_mouse.z + 999);
+    _zoomed.scale = 0;
+}
+
 bool initChart()
 {
     if (*_programData.chart == '\0') {
@@ -389,8 +399,8 @@ bool initChart()
     // Start at centre of map
     _chart.x = _chart.width / 2.0;
     _chart.y = _chart.height / 2.0;
-    _chart.scale = 100;
-    _zoomed.scale = 0;
+
+    initZoomedOut();
 
     al_set_target_backbuffer(_display);
 
@@ -1134,10 +1144,10 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
                 _chartData.state = -1;
             }
             else {
-                // Centre map and reset zoom
+                // Centre map and zoom out
                 _chart.x = _chart.width / 2.0;
                 _chart.y = _chart.height / 2.0;
-                _mouseStartZ = -_mouse.z;
+                initZoomedOut();
             }
         }
     }

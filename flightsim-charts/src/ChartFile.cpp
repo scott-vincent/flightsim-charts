@@ -216,9 +216,10 @@ void loadCalibration()
 }
 
 /// <summary>
-/// Windows Common File Picker Dialog
+/// Windows Common File Picker Dialog.
+/// Returns false if cancelled.
 /// </summary>
-void fileSelectorDialog(HWND displayHwnd)
+bool fileSelectorDialog(HWND displayHwnd)
 {
     bool validFolder = false;
     char filename[260];
@@ -239,10 +240,11 @@ void fileSelectorDialog(HWND displayHwnd)
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
     if (!GetOpenFileName(&ofn)) {
-        return;
+        return false;
     }
 
     strcpy(_programData.chart, filename);
+    return true;
 }
 
 /// <summary>

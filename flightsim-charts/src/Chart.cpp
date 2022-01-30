@@ -363,10 +363,13 @@ bool initMenu()
 }
 
 /// <summary>
-/// Zoom fully out
+/// Centre map and zoom fully out
 /// </summary>
-void initZoomedOut()
+void resetMap()
 {
+    _chart.x = _chart.width / 2.0;
+    _chart.y = _chart.height / 2.0;
+
     al_get_mouse_state(&_mouse);
     _mouseStartZ = -(_mouse.z + 999);
     _zoomed.scale = 0;
@@ -396,11 +399,8 @@ bool initChart()
     _chart.width = al_get_bitmap_width(_chart.bmp);
     _chart.height = al_get_bitmap_height(_chart.bmp);
 
-    // Start at centre of map
-    _chart.x = _chart.width / 2.0;
-    _chart.y = _chart.height / 2.0;
-
-    initZoomedOut();
+    // Centre map and zoom fully out
+    resetMap();
 
     al_set_target_backbuffer(_display);
 
@@ -816,7 +816,10 @@ void newChart()
 {
     al_set_window_title(_display, "Select Chart");
 
-    fileSelectorDialog(al_get_win_window_handle(_display));
+    if (!fileSelectorDialog(al_get_win_window_handle(_display))) {
+        _titleState = -2;
+        return;
+    }
 
     if (initChart()) {
         // Save the last loaded chart name
@@ -1144,10 +1147,8 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
                 _chartData.state = -1;
             }
             else {
-                // Centre map and zoom out
-                _chart.x = _chart.width / 2.0;
-                _chart.y = _chart.height / 2.0;
-                initZoomedOut();
+                // Centre map and zoom fully out
+                resetMap();
             }
         }
     }

@@ -218,9 +218,7 @@ void cleanup()
 
     // Clenaup tags
     for (int i = 0; i < _tagCount; i++) {
-        if (_otherTag[i].tag.bmp != NULL) {
-            al_destroy_bitmap(_otherTag[i].tag.bmp);
-        }
+        cleanupBitmap(_otherTag[i].tag.bmp);
     }
 
     if (_timer) {
@@ -369,6 +367,12 @@ bool initChart()
     if (*_programData.chart == '\0') {
         return false;
     }
+
+    cleanupBitmap(_chart.bmp);
+    _chart.bmp = NULL;
+
+    cleanupBitmap(_zoomed.bmp);
+    _zoomed.bmp = NULL;
 
     _chart.bmp = al_load_bitmap(_programData.chart);
     if (!_chart.bmp) {
@@ -1014,10 +1018,8 @@ void doUpdate()
         _zoomed.scale = zoomScale;
         _menuActive = false;
 
-        if (_zoomed.bmp != NULL) {
-            al_destroy_bitmap(_zoomed.bmp);
-            _zoomed.bmp = NULL;
-        }
+        cleanupBitmap(_zoomed.bmp);
+        _zoomed.bmp = NULL;
     }
 
     if (_zoomed.bmp == NULL) {

@@ -5,7 +5,8 @@
 // Constants
 const int MAX_AIRCRAFT = 150;
 const int AIRCRAFT_RANGE = 8000;  // metres
-const int WINGSPAN_SMALL = 60;      // feet
+const int WINGSPAN_SMALL = 60;    // feet
+const char DegreesSymbol[] = "\xC2\xB0";
 
 struct DrawData {
     ALLEGRO_BITMAP* bmp;
@@ -45,6 +46,11 @@ struct LocData {
     double wingSpan;
     char callsign[32];
     char model[32];
+};
+
+struct WindData {
+    double direction;
+    double speed;
 };
 
 struct TagData {

@@ -94,8 +94,6 @@ void chartPosToLocation(int x, int y, Location* loc)
 /// </summary>
 void coordToString(double coord, char* str)
 {
-    const char DegreesSymbol[] = "\xC2\xB0";
-
     int degs = coord;
     double secs = (coord - degs) * 3600.00;
     int mins = secs / 60.0;

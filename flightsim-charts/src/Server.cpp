@@ -5,7 +5,8 @@
 #include "simconnect.h"
 
 enum DEFINITION_ID {
-    DEF_ID
+    DEF_SELF,
+    DEF_ALL
 };
 
 enum REQUEST_ID {
@@ -18,11 +19,13 @@ extern bool _quit;
 
 // Variables
 LocData _locData;
+WindData _windData;
 LocData _aircraftLoc;
 LocData _aircraftOtherLoc[MAX_AIRCRAFT];
 LocData _newAircraftOtherLoc[MAX_AIRCRAFT];
 int _aircraftOtherCount = 0;
 int _locDataSize = sizeof(LocData);
+int _windDataSize = sizeof(WindData);
 bool _pendingRequest = false;
 HANDLE hSimConnect = NULL;
 bool _connected = false;
@@ -42,12 +45,13 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
         case REQ_SELF:
         {
             int dataSize = pObjData->dwSize - ((int)(&pObjData->dwData) - (int)pData);
-            if (dataSize != _locDataSize) {
-                printf("Error: SimConnect expected %d bytes but received %d bytes\n", _locDataSize, dataSize);
+            if (dataSize != _locDataSize + _windDataSize) {
+                printf("Error: SimConnect expected %d bytes but received %d bytes\n", _locDataSize + _windDataSize, dataSize);
                 return;
             }
 
             memcpy(&_locData, &pObjData->dwData, _locDataSize);
+            memcpy(&_windData, (char*)&pObjData->dwData + _locDataSize, _windDataSize);
 
             // Check for fake data that FS2020 sends before you have selected an airport
             if (_locData.lat > -0.02 && _locData.lat < 0.02 && _locData.lon > -0.02 && _locData.lon < 0.02 && (_locData.heading > 359.9 || _locData.heading < 0.1)) {
@@ -59,7 +63,7 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 
             if (!_pendingRequest) {
                 // Request data of aircraft within range
-                if (SimConnect_RequestDataOnSimObjectType(hSimConnect, REQ_ALL, DEF_ID, AIRCRAFT_RANGE, SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT) < 0) {
+                if (SimConnect_RequestDataOnSimObjectType(hSimConnect, REQ_ALL, DEF_ALL, AIRCRAFT_RANGE, SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT) < 0) {
                     printf("Failed to request all aircraft data\n");
                 }
                 else {
@@ -141,15 +145,15 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
     }
 }
 
-void addDataDef(const char *var, const char *units)
+void addDataDef(SIMCONNECT_DATA_DEFINITION_ID defId, const char *var, const char *units)
 {
     HRESULT result;
     
     if (strcmp(units, "string") == 0) {
-        result = SimConnect_AddToDataDefinition(hSimConnect, DEF_ID, var, NULL, SIMCONNECT_DATATYPE_STRING32);
+        result = SimConnect_AddToDataDefinition(hSimConnect, defId, var, NULL, SIMCONNECT_DATATYPE_STRING32);
     }
     else {
-        result = SimConnect_AddToDataDefinition(hSimConnect, DEF_ID, var, units);
+        result = SimConnect_AddToDataDefinition(hSimConnect, defId, var, units);
     }
 
     if (result < 0) {
@@ -160,15 +164,24 @@ void addDataDef(const char *var, const char *units)
 void init()
 {
     // SimConnect variables
-    addDataDef("Plane Latitude", "Degrees");
-    addDataDef("Plane Longitude", "Degrees");
-    addDataDef("Plane Heading Degrees True", "Degrees");
-    addDataDef("Wing Span", "Feet");
-    addDataDef("Atc Id", "string");
-    addDataDef("Atc Model", "string");
+    addDataDef(DEF_SELF, "Plane Latitude", "Degrees");
+    addDataDef(DEF_SELF, "Plane Longitude", "Degrees");
+    addDataDef(DEF_SELF, "Plane Heading Degrees True", "Degrees");
+    addDataDef(DEF_SELF, "Wing Span", "Feet");
+    addDataDef(DEF_SELF, "Atc Id", "string");
+    addDataDef(DEF_SELF, "Atc Model", "string");
+    addDataDef(DEF_SELF, "Ambient Wind Direction", "Degrees");
+    addDataDef(DEF_SELF, "Ambient Wind Velocity", "Knots");
+
+    addDataDef(DEF_ALL, "Plane Latitude", "Degrees");
+    addDataDef(DEF_ALL, "Plane Longitude", "Degrees");
+    addDataDef(DEF_ALL, "Plane Heading Degrees True", "Degrees");
+    addDataDef(DEF_ALL, "Wing Span", "Feet");
+    addDataDef(DEF_ALL, "Atc Id", "string");
+    addDataDef(DEF_ALL, "Atc Model", "string");
 
     // Start requesting data for our aircraft
-    if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_ID, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_VISUAL_FRAME, 0, 0, 0, 0) < 0) {
+    if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_VISUAL_FRAME, 0, 0, 0, 0) < 0) {
         printf("Failed to start requesting own aircraft data\n");
     }
 }
@@ -176,7 +189,7 @@ void init()
 void cleanUp()
 {
     if (hSimConnect) {
-        if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_ID, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_NEVER, 0, 0, 0, 0) < 0) {
+        if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_NEVER, 0, 0, 0, 0) < 0) {
             printf("Failed to stop requesting data\n");
         }
 

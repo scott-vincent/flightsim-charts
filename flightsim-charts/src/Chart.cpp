@@ -18,6 +18,7 @@ const char AircraftSmallOtherFile[] = "images/aircraft_small_other.png";
 const char LabelFile[] = "images/label.png";
 const char MarkerFile[] = "images/marker.png";
 const char RingFile[] = "images/ring.png";
+const char ArrowFile[] = "images/arrow.png";
 const int DataRateFps = 6;
 const int MinScale = 40;
 const int MaxScale = 150;
@@ -25,6 +26,7 @@ const int MaxScale = 150;
 // Externals
 extern bool _quit;
 extern LocData _aircraftLoc;
+extern WindData _windData;
 extern LocData _aircraftOtherLoc[MAX_AIRCRAFT];
 extern int _aircraftOtherCount;
 extern int _locDataSize;
@@ -50,6 +52,9 @@ char _labelText[256];
 char _tagText[68];
 DrawData _marker;
 DrawData _ring;
+DrawData _arrow;
+DrawData _windInfo;
+DrawData _windInfoCopy;
 MouseData _mouseData;
 ChartData _chartData;
 ProgramData _programData;
@@ -70,6 +75,8 @@ bool _showCalibration = false;
 Location _clickedLoc;
 Position _clickedPos;
 Position _clipboardPos;
+int _windDirection = -1;
+int _windSpeed = -1;
 
 
 /// <summary>
@@ -86,9 +93,12 @@ void initVars()
     _aircraft.otherBmp = NULL;
     _aircraft.smallOtherBmp = NULL;
     _aircraftLabel.bmp = NULL;
+    _aircraftLabelBmpCopy = NULL;
     _marker.bmp = NULL;
     _ring.bmp = NULL;
-    _aircraftLabelBmpCopy = NULL;
+    _arrow.bmp = NULL;
+    _windInfo.bmp = NULL;
+    _windInfoCopy.bmp = NULL;
 
     _mouseData.dragging = false;
     _mouseData.dragX = 0;
@@ -215,6 +225,9 @@ void cleanup()
     cleanupBitmap(_aircraftLabelBmpCopy);
     cleanupBitmap(_marker.bmp);
     cleanupBitmap(_ring.bmp);
+    cleanupBitmap(_arrow.bmp);
+    cleanupBitmap(_windInfo.bmp);
+    cleanupBitmap(_windInfoCopy.bmp);
 
     // Clenaup tags
     for (int i = 0; i < _tagCount; i++) {
@@ -509,6 +522,34 @@ bool initRing()
     return true;
 }
 
+bool initWind()
+{
+    _arrow.bmp = al_load_bitmap(ArrowFile);
+    if (!_arrow.bmp) {
+        printf("Missing file: %s\n", ArrowFile);
+        return false;
+    }
+
+    _arrow.width = al_get_bitmap_width(_arrow.bmp);
+    _arrow.height = al_get_bitmap_height(_arrow.bmp);
+    _arrow.x = _arrow.width / 2;
+    _arrow.y = _arrow.height / 2;
+
+    // Draw max wind info required
+    _windInfo.width = 58;
+    _windInfo.height = 22;
+    _windInfo.bmp = al_create_bitmap(_windInfo.width, _windInfo.height);
+
+    // fill with background colour
+    al_set_target_bitmap(_windInfo.bmp);
+    al_clear_to_color(al_map_rgb(0xff, 0xff, 0xb2));
+    al_set_target_backbuffer(_display);
+
+    _windInfoCopy.bmp = al_create_bitmap(_windInfo.width, _windInfo.height);
+
+    return true;
+}
+
 void drawOwnAircraft()
 {
     if (_aircraft.x == 99999) {
@@ -675,6 +716,12 @@ void render()
         }
     }
 
+    // Draw wind at top centre of display
+    int x = _displayWidth / 2;
+    int y = 40;
+    al_draw_scaled_rotated_bitmap(_arrow.bmp, _arrow.x, _arrow.y, x, y, 0.15, 0.2, (180 + _windDirection) * DegreesToRadians, 0);
+    al_draw_bitmap_region(_windInfoCopy.bmp, 0, 0, _windInfoCopy.width, _windInfo.height, x + 26, y - _windInfo.height / 2, 0);
+
     // Draw menu
     if (_menuActive) {
         al_draw_bitmap(_menu.bmp, _menu.x, _menu.y, 0);
@@ -712,6 +759,10 @@ bool doInit()
     }
 
     if (!initRing()) {
+        return false;
+    }
+
+    if (!initWind()) {
         return false;
     }
 
@@ -991,6 +1042,38 @@ void updateOtherTags()
     _tagCount = _snapshotOtherCount;
 }
 
+void updateWind()
+{
+    int windDirection = _windData.direction + 0.5;
+    int windSpeed = _windData.speed + 0.5;
+
+    if (_windDirection == windDirection && _windSpeed == windSpeed) {
+        return;
+    }
+
+    _windDirection = windDirection;
+    _windSpeed = windSpeed;
+
+    // Create wind info copy
+    al_set_target_bitmap(_windInfoCopy.bmp);
+    al_draw_bitmap(_windInfo.bmp, 0, 0, 0);
+
+    char text[16];
+    sprintf(text, " %d%s", windDirection, DegreesSymbol);
+    al_draw_text(_font, al_map_rgb(0x40, 0x40, 0x40), 2, 2, 0, text);
+
+    sprintf(text, "%d kts", windSpeed);
+    al_draw_text(_font, al_map_rgb(0x40, 0x40, 0x40), 2, 12, 0, text);
+
+    al_set_target_backbuffer(_display);
+
+    // Reduce width for lower wind speed
+    _windInfoCopy.width = _windInfo.width;
+    if (_windSpeed < 100) {
+        _windInfoCopy.width -= 8;
+    }
+}
+
 /// <summary>
 /// Update everything before the next frame
 /// </summary>
@@ -1040,6 +1123,7 @@ void doUpdate()
     }
 
     updateOwnAircraft();
+    updateWind();
 
     // Take a new snapshot of the other aircraft
     _snapshotOtherCount = _aircraftOtherCount;

@@ -283,3 +283,30 @@ bool drawOtherAircraft(Position* displayPos1, Position* displayPos2, LocData* lo
 
     return true;
 }
+
+CalibratedData* findClosestChart(CalibratedData* calib, int count, LocData* loc)
+{
+    CalibratedData* closest = calib;
+    double minDistance = 99999;
+
+    // Calculate distance to centre point of each calibration to find nearest one
+    for (int i = 0; i < count; i++) {
+        CalibratedData* nextCalib = calib + i;
+
+        // Ignore any bad calibration data
+        if (nextCalib->data.state == 2) {
+            Location centre;
+            centre.lat = (nextCalib->data.lat[0] + nextCalib->data.lat[1]) / 2.0;
+            centre.lon = (nextCalib->data.lon[0] + nextCalib->data.lon[1]) / 2.0;
+
+            double distance = greatCircleDistance(centre, loc->lat, loc-> lon);
+
+            if (distance < minDistance) {
+                closest = nextCalib;
+                minDistance = distance;
+            }
+        }
+    }
+
+    return closest;
+}

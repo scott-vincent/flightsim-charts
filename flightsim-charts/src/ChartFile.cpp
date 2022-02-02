@@ -178,13 +178,16 @@ void saveCalibration(int x, int y, Location* loc)
 }
 
 /// <summary>
-/// Load chart calibration if it exists
+/// Load calibration data if it exists.
+/// If no filename supplied assume currently loaded chart
 /// </summary>
-void loadCalibration()
+void loadCalibrationData(ChartData* chartData, char* filename = NULL)
 {
-    _chartData.state = -1;
+    if (filename == NULL) {
+        filename = calibrationFile();
+    }
 
-    FILE* inf = fopen(calibrationFile(), "r");
+    FILE* inf = fopen(filename, "r");
     if (inf != NULL) {
         char line[256];
         int x;
@@ -192,8 +195,8 @@ void loadCalibration()
         double lat;
         double lon;
 
-        _chartData.state = 0;
-        while (fgets(line, 256, inf) && _chartData.state < 2) {
+        chartData->state = 0;
+        while (fgets(line, 256, inf) && chartData->state < 2) {
             while (strlen(line) > 0 && (line[strlen(line) - 1] == ' '
                 || line[strlen(line) - 1] == '\r' || line[strlen(line) - 1] == '\n')) {
                 line[strlen(line) - 1] = '\0';
@@ -202,11 +205,11 @@ void loadCalibration()
             if (strlen(line) > 0) {
                 int items = sscanf(line, "%d,%d = %lf,%lf", &x, &y, &lat, &lon);
                 if (items == 4) {
-                    _chartData.x[_chartData.state] = x;
-                    _chartData.y[_chartData.state] = y;
-                    _chartData.lat[_chartData.state] = lat;
-                    _chartData.lon[_chartData.state] = lon;
-                    _chartData.state++;
+                    chartData->x[chartData->state] = x;
+                    chartData->y[chartData->state] = y;
+                    chartData->lat[chartData->state] = lat;
+                    chartData->lon[chartData->state] = lon;
+                    chartData->state++;
                 }
             }
         }
@@ -223,7 +226,15 @@ bool fileSelectorDialog(HWND displayHwnd)
 {
     bool validFolder = false;
     char filename[260];
+    char folder[260];
     OPENFILENAME ofn;
+
+    // Set initial folder
+    strcpy(folder, _programData.chart);
+    char* sep = strrchr(folder, '\\');
+    if (sep) {
+        *sep = '\0';
+    }
 
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
@@ -236,7 +247,7 @@ bool fileSelectorDialog(HWND displayHwnd)
     ofn.nFilterIndex = 1;
     ofn.lpstrFileTitle = NULL;
     ofn.nMaxFileTitle = 0;
-    ofn.lpstrInitialDir = NULL;
+    ofn.lpstrInitialDir = folder;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
     if (!GetOpenFileName(&ofn)) {
@@ -368,4 +379,91 @@ void getClipboardLocation(Location* loc)
     if (loc->lon == 99999) {
         loc->lat = 99999;
     }
+}
+
+/// <summary>
+/// Recursively find all calibration files in a parent folder
+/// </summary>
+void findAllFiles(char *folder, CalibratedData* calib, int* count)
+{
+    char searchPath[256];
+    sprintf(searchPath, "%s\\*", folder);
+
+    WIN32_FIND_DATA fileData;
+    HANDLE hFind = FindFirstFile(searchPath, &fileData);
+    if (hFind == INVALID_HANDLE_VALUE) {
+        return;
+    }
+
+    char filePath[512];
+    do
+    {
+        if (*fileData.cFileName == '.') {
+            continue;
+        }
+
+        sprintf(filePath, "%s\\%s", folder, fileData.cFileName);
+
+        if (fileData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+        {
+            findAllFiles(filePath, calib, count);
+        }
+        else {
+            char* ext = strrchr(filePath, '.');
+            if (ext && strcmp(ext, CalibrationExt) == 0) {
+                CalibratedData* nextCalib = calib + *count;
+                strcpy(nextCalib->filename, filePath);
+                nextCalib->data.state = -1;
+                loadCalibrationData(&nextCalib->data, nextCalib->filename);
+
+                if (*count < MAX_CHARTS) {
+                    (*count)++;
+                }
+            }
+        }
+    } while (FindNextFile(hFind, &fileData) != 0);
+
+    FindClose(hFind);
+}
+
+/// <summary>
+/// Use current chart file to find parent folder.
+/// Pathname must include airport code, e.g. either /EGKK/ or /EG/KK/
+/// Find all calibration files within parent folder.
+/// </summary>
+void findCalibratedCharts(CalibratedData* calib, int* count)
+{
+    char folder[256];
+    *count = 0;
+
+    strcpy(folder, _programData.chart);
+    char* sep = strrchr(folder, '\\');
+    if (!sep) {
+        return;
+    }
+
+    // Remove filename to get folder name
+    *sep = '\0';
+    sep = strrchr(folder, '\\');
+    if (!sep) {
+        return;
+    }
+
+    // If folder ends with /xx go back another level
+    if (strlen(sep) == 3) {
+        *sep = '\0';
+        sep = strrchr(folder, '\\');
+        if (!sep) {
+            return;
+        }
+    }
+
+    // Expect folder to end with /xx or /xxxx
+    if (strlen(sep) != 3 && strlen(sep) != 5) {
+        return;
+    }
+    *sep = '\0';
+
+    // Recurse parent folder to find all calibration files
+    findAllFiles(folder, calib, count);
 }

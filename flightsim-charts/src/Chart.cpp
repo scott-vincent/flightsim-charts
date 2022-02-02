@@ -114,7 +114,6 @@ void initVars()
     _programData.width = 1200;
     _programData.height = 800;
 
-    strcpy(_chartData.title, ProgramName);
     _chartData.state = -1;
     _titleState = -2;
     _clickedLoc.lat = 99999;
@@ -302,7 +301,7 @@ void updateWindowTitle()
     }
 
     if (*_programData.chart == '\0') {
-        strcpy(_chartData.title, titleStart);
+        strcpy(title, titleStart);
     }
     else {
         char* name = strrchr(_programData.chart, '\\');
@@ -320,7 +319,7 @@ void updateWindowTitle()
             *ext = '\0';
         }
 
-        sprintf(_chartData.title, "%s - %s", titleStart, chart);
+        sprintf(title, "%s - %s", titleStart, chart);
     }
 
     switch (_chartData.state) {
@@ -340,11 +339,11 @@ void updateWindowTitle()
         if (_showCalibration && _clickedLoc.lat != 99999) {
             char str[64];
             locationToString(&_clickedLoc, str);
-            sprintf(title, "%s   %s", _chartData.title, str);
+            sprintf(title, "%s   %s", title, str);
             al_set_window_title(_display, title);
         }
         else {
-            al_set_window_title(_display, _chartData.title);
+            al_set_window_title(_display, title);
         }
         break;
     }
@@ -418,8 +417,9 @@ bool initChart()
     al_set_target_backbuffer(_display);
 
     // Load calibration if available
+    _chartData.state = -1;
     _titleState = -2;
-    loadCalibration();
+    loadCalibrationData(&_chartData);
 
     return true;
 }
@@ -800,6 +800,77 @@ void doRender()
 }
 
 /// <summary>
+/// Select and load a new chart
+/// </summary>
+void newChart()
+{
+    al_set_window_title(_display, "Select Chart");
+
+    if (!fileSelectorDialog(al_get_win_window_handle(_display))) {
+        _titleState = -2;
+        return;
+    }
+
+    if (initChart()) {
+        // Save the last loaded chart name
+        saveProgramData();
+    }
+}
+
+/// <summary>
+/// Find all the .calibration files in the parent folder and use the calibrated coordinates
+/// to work out which chart the aircraft is closest to, then load this chart.
+/// </summary>
+void closestChart()
+{
+    if (_aircraftLoc.lat == 99999) {
+        return;
+    }
+
+    CalibratedData* calib = (CalibratedData*)malloc(sizeof(calib) * MAX_CHARTS);
+
+    int count;
+    findCalibratedCharts(calib, &count);
+    if (count == 0) {
+        free(calib);
+        return;
+    }
+
+    CalibratedData* closest = findClosestChart(calib, count, &_aircraftLoc);
+    strcpy(_programData.chart, closest->filename);
+
+    // Chart could be .png or .jpg
+    char* ext = strrchr(_programData.chart, '.');
+    strcpy(ext, ".png");
+    FILE* inf = fopen(_programData.chart, "r");
+    if (inf) {
+        fclose(inf);
+    }
+    else {
+        strcpy(ext, ".jpg");
+    }
+
+    if (initChart()) {
+        // Save the last loaded chart name
+        saveProgramData();
+    }
+
+    free(calib);
+}
+
+/// <summary>
+/// When viewing calibration the last point clicked (small cross) and the
+/// last location retrieved from the clipboard (circle) may be displayed.
+/// </summary>
+void clearCustomPoints()
+{
+    _clickedLoc.lat = 99999;
+    _clickedPos.x = -1;
+    _clipboardPos.x = -1;
+    _titleState = -2;
+}
+
+/// <summary>
 /// See if mouse is over a selectable menu item
 /// </summary>
 void menuSelect(int mouseY)
@@ -817,8 +888,9 @@ void menuSelect(int mouseY)
     while (_menuSelect.x == -1) {
         switch (nextItem) {
             case 1:     // Load Chart
-            case 2:     // Show Tags
-            case 5:     // Exit
+            case 2:     // Load Closest
+            case 3:     // Show Tags
+            case 6:     // Exit
                 if (_mouse.y < _menuSelect.y + itemHeight) {
                     _menuSelect.x = nextItem;
                 }
@@ -827,7 +899,7 @@ void menuSelect(int mouseY)
                 }
                 break;
 
-            case 3:     // Show Calibration
+            case 4:     // Show Calibration
                 if (_mouse.y < _menuSelect.y + itemHeight) {
                     _menuSelect.x = nextItem;
                 }
@@ -839,7 +911,7 @@ void menuSelect(int mouseY)
                 }
                 break;
 
-            case 4:     // Re-calibrate
+            case 5:     // Re-calibrate
                 if (_mouse.y < _menuSelect.y + itemHeight) {
                     _menuSelect.x = nextItem;
                 }
@@ -861,36 +933,6 @@ void menuSelect(int mouseY)
 }
 
 /// <summary>
-/// Select and load a new chart
-/// </summary>
-void newChart()
-{
-    al_set_window_title(_display, "Select Chart");
-
-    if (!fileSelectorDialog(al_get_win_window_handle(_display))) {
-        _titleState = -2;
-        return;
-    }
-
-    if (initChart()) {
-        // Save the last loaded chart name
-        saveProgramData();
-    }
-}
-
-/// <summary>
-/// When viewing calibration the last point clicked (small cross) and the
-/// last location retrieved from the clipboard (circle) may be displayed.
-/// </summary>
-void clearCustomPoints()
-{
-    _clickedLoc.lat = 99999;
-    _clickedPos.x = -1;
-    _clipboardPos.x = -1;
-    _titleState = -2;
-}
-
-/// <summary>
 /// A menu item has been clicked
 /// </summary>
 void menuAction()
@@ -903,13 +945,19 @@ void menuAction()
             break;
 
         case 2:
+            // Load closest
+            closestChart();
+            _showCalibration = false;
+            break;
+
+        case 3:
             // Show tags
             if (_chartData.state == 2) {
                 _showTags = !_showTags;
             }
             break;
 
-        case 3:
+        case 4:
             // Show calibration
             if (_chartData.state == 2) {
                 _showCalibration = !_showCalibration;
@@ -917,7 +965,7 @@ void menuAction()
             clearCustomPoints();
             break;
 
-        case 4:
+        case 5:
             // Re-calibrate
             _chartData.state = 0;
             _showCalibration = false;
@@ -925,7 +973,7 @@ void menuAction()
             //launchOpenStreetMap();
             break;
 
-        case 5:
+        case 6:
             // Exit
             _quit = true;
             break;
@@ -1070,6 +1118,9 @@ void updateWind()
     // Reduce width for lower wind speed
     _windInfoCopy.width = _windInfo.width;
     if (_windSpeed < 100) {
+        _windInfoCopy.width -= 8;
+    }
+    if (_windSpeed < 10) {
         _windInfoCopy.width -= 8;
     }
 }

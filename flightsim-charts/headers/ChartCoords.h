@@ -16,3 +16,4 @@ void chartPosToLocation(int x, int y, Location* loc);
 void locationToString(Location* loc, char* str);
 void aircraftLocToChartPos(AircraftPosition* pos);
 bool drawOtherAircraft(Position* displayPos1, Position* displayPos2, LocData* loc, Position* pos);
+CalibratedData* findClosestChart(CalibratedData* calib, int count, LocData* loc);

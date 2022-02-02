@@ -4,6 +4,7 @@
 
 // Constants
 const int MAX_AIRCRAFT = 150;
+const int MAX_CHARTS = 1500;
 const int AIRCRAFT_RANGE = 8000;  // metres
 const int WINGSPAN_SMALL = 60;    // feet
 const char DegreesSymbol[] = "\xC2\xB0";
@@ -59,7 +60,6 @@ struct TagData {
 };
 
 struct ChartData {
-    char title[256];
     int state;
     int x[2];
     int y[2];
@@ -73,6 +73,11 @@ struct ProgramData {
     int width;
     int height;
     char chart[256];
+};
+
+struct CalibratedData {
+    char filename[256];
+    ChartData data;
 };
 
 struct Position {

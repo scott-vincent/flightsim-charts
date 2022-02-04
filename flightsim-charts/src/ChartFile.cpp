@@ -12,7 +12,7 @@ const char urlQuery[] = "https://www.openstreetmap.org/search?query=";
 extern int _displayWidth;
 extern int _displayHeight;
 extern ChartData _chartData;
-extern ProgramData _programData;
+extern Settings _settings;
 
 /// <summary>
 /// Returns the full pathname of the settings file
@@ -40,7 +40,7 @@ char* settingsFile()
 char* calibrationFile()
 {
     static char filename[256];
-    strcpy(filename, _programData.chart);
+    strcpy(filename, _settings.chart);
 
     char* last = strrchr(filename, '\\');
     if (last) {
@@ -57,7 +57,7 @@ char* calibrationFile()
 /// <summary>
 /// Save the latest window position/size and chart file name
 /// </summary>
-void saveProgramData()
+void saveSettings()
 {
     FILE* outf = fopen(settingsFile(), "w");
     if (!outf) {
@@ -67,15 +67,15 @@ void saveProgramData()
         return;
     }
 
-    fprintf(outf, "%d,%d,%d,%d\n", _programData.x, _programData.y, _programData.width, _programData.height);
-    fprintf(outf, "%s\n", _programData.chart);
+    fprintf(outf, "%d,%d,%d,%d\n", _settings.x, _settings.y, _settings.width, _settings.height);
+    fprintf(outf, "%s\n", _settings.chart);
     fclose(outf);
 }
 
 /// <summary>
 /// Load the last window position/size and chart file name if it exists.
 /// </summary>
-void loadProgramData()
+void loadSettings()
 {
     FILE* inf = fopen(settingsFile(), "r");
     if (inf != NULL) {
@@ -96,14 +96,14 @@ void loadProgramData()
                 if (nextLine == 1) {
                     int items = sscanf(line, "%d,%d,%d,%d", &x, &y, &width, &height);
                     if (items == 4) {
-                        _programData.x = x;
-                        _programData.y = y;
-                        _programData.width = width;
-                        _programData.height = height;
+                        _settings.x = x;
+                        _settings.y = y;
+                        _settings.width = width;
+                        _settings.height = height;
                     }
                 }
                 else if (nextLine == 2) {
-                    strcpy(_programData.chart, line);
+                    strcpy(_settings.chart, line);
                 }
 
                 nextLine++;
@@ -111,6 +111,17 @@ void loadProgramData()
         }
 
         fclose(inf);
+    }
+    else {
+        // No settings file so use default chart
+        GetModuleFileName(NULL, _settings.chart, 256);
+
+        char* last = strrchr(_settings.chart, '\\');
+        if (last) {
+            last++;
+            *last = '\0';
+            strcat(_settings.chart, DefaultChart);
+        }
     }
 }
 
@@ -230,7 +241,7 @@ bool fileSelectorDialog(HWND displayHwnd)
     OPENFILENAME ofn;
 
     // Set initial folder
-    strcpy(folder, _programData.chart);
+    strcpy(folder, _settings.chart);
     char* sep = strrchr(folder, '\\');
     if (sep) {
         *sep = '\0';
@@ -254,7 +265,7 @@ bool fileSelectorDialog(HWND displayHwnd)
         return false;
     }
 
-    strcpy(_programData.chart, filename);
+    strcpy(_settings.chart, filename);
     return true;
 }
 
@@ -269,7 +280,7 @@ void launchOpenStreetMap()
     bool found = false;
 
     char filename[256];
-    strcpy(filename, _programData.chart);
+    strcpy(filename, _settings.chart);
     char* last = strrchr(filename, '\\');
     if (last) {
         *last = '\0';
@@ -289,7 +300,7 @@ void launchOpenStreetMap()
     }
     else {
         // Look for 4 capital letters in filename
-        char* name = strrchr(_programData.chart, '\\');
+        char* name = strrchr(_settings.chart, '\\');
         while (*name != '\0') {
             if (*name >= 'A' && *name <= 'Z' && *(name + 1) >= 'A' && *(name + 1) <= 'Z' &&
                 *(name + 2) >= 'A' && *(name + 2) <= 'Z' && *(name + 3) >= 'A' && *(name + 3) <= 'Z')
@@ -303,10 +314,10 @@ void launchOpenStreetMap()
     }
 
     if (found) {
-        printf("Found airport ICAO: %s in chart path: %s\n", airport, _programData.chart);
+        printf("Found airport ICAO: %s in chart path: %s\n", airport, _settings.chart);
     }
     else {
-        printf("Defaulting to %s as no airport ICAO found in chart path: %s\n", airport, _programData.chart);
+        printf("Defaulting to %s as no airport ICAO found in chart path: %s\n", airport, _settings.chart);
     }
 
     char url[256];
@@ -436,7 +447,7 @@ void findCalibratedCharts(CalibratedData* calib, int* count)
     char folder[256];
     *count = 0;
 
-    strcpy(folder, _programData.chart);
+    strcpy(folder, _settings.chart);
     char* sep = strrchr(folder, '\\');
     if (!sep) {
         return;

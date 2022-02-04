@@ -57,7 +57,7 @@ DrawData _windInfo;
 DrawData _windInfoCopy;
 MouseData _mouseData;
 ChartData _chartData;
-ProgramData _programData;
+Settings _settings;
 ALLEGRO_MOUSE_STATE _mouse;
 LocData _snapshotOtherLoc[MAX_AIRCRAFT];
 int _snapshotOtherCount;
@@ -104,15 +104,15 @@ void initVars()
     _mouseData.dragX = 0;
     _mouseData.dragY = 0;
 
-    *_programData.chart = '\0';
+    *_settings.chart = '\0';
     *_labelText = '\0';
     *_tagText = '\0';
 
     // Default window position and size if no settings saved
-    _programData.x = 360;
-    _programData.y = 100;
-    _programData.width = 1200;
-    _programData.height = 800;
+    _settings.x = 360;
+    _settings.y = 100;
+    _settings.width = 1200;
+    _settings.height = 800;
 
     _chartData.state = -1;
     _titleState = -2;
@@ -171,7 +171,7 @@ bool init()
     al_set_new_display_option(ALLEGRO_VSYNC, 1, ALLEGRO_REQUIRE);
 
     // Create window
-    if ((_display = al_create_display(_programData.width, _programData.height)) == NULL) {
+    if ((_display = al_create_display(_settings.width, _settings.height)) == NULL) {
         printf("Failed to create display\n");
         return false;
     }
@@ -181,7 +181,7 @@ bool init()
     ShowWindow(_displayWindow, SW_SHOWNORMAL);
 
     // Position window
-    al_set_window_position(_display, _programData.x, _programData.y);
+    al_set_window_position(_display, _settings.x, _settings.y);
 
     _displayWidth = al_get_display_width(_display);
     _displayHeight = al_get_display_height(_display);
@@ -300,16 +300,16 @@ void updateWindowTitle()
         strcpy(titleStart, _tagText);
     }
 
-    if (*_programData.chart == '\0') {
+    if (*_settings.chart == '\0') {
         strcpy(title, titleStart);
     }
     else {
-        char* name = strrchr(_programData.chart, '\\');
+        char* name = strrchr(_settings.chart, '\\');
         if (name) {
             name++;
         }
         else {
-            name = _programData.chart;
+            name = _settings.chart;
         }
 
         char chart[256];
@@ -389,7 +389,7 @@ void resetMap()
 
 bool initChart()
 {
-    if (*_programData.chart == '\0') {
+    if (*_settings.chart == '\0') {
         return false;
     }
 
@@ -399,12 +399,12 @@ bool initChart()
     cleanupBitmap(_zoomed.bmp);
     _zoomed.bmp = NULL;
 
-    _chart.bmp = al_load_bitmap(_programData.chart);
+    _chart.bmp = al_load_bitmap(_settings.chart);
     if (!_chart.bmp) {
         char msg[256];
-        sprintf(msg, "ERROR: Failed to load chart %s\n", _programData.chart);
+        sprintf(msg, "ERROR: Failed to load chart %s\n", _settings.chart);
         showMessage(msg);
-        *_programData.chart = '\0';
+        *_settings.chart = '\0';
         return false;
     }
 
@@ -426,7 +426,7 @@ bool initChart()
 
 void initZoomedChart()
 {
-    if (*_programData.chart == '\0') {
+    if (*_settings.chart == '\0') {
         return;
     }
 
@@ -666,7 +666,7 @@ void drawOtherAircraft()
 
 void render()
 {
-    if (*_programData.chart == '\0') {
+    if (*_settings.chart == '\0') {
         return;
     }
 
@@ -789,11 +789,11 @@ void doRender()
         _winCheckDelay = DataRateFps;
         RECT winPos;
         if (GetWindowRect(_displayWindow, &winPos)) {
-            if (_programData.x != winPos.left || _programData.y != winPos.top)
+            if (_settings.x != winPos.left || _settings.y != winPos.top)
             {
-                _programData.x = winPos.left;
-                _programData.y = winPos.top;
-                saveProgramData();
+                _settings.x = winPos.left;
+                _settings.y = winPos.top;
+                saveSettings();
             }
         }
     }
@@ -813,7 +813,7 @@ void newChart()
 
     if (initChart()) {
         // Save the last loaded chart name
-        saveProgramData();
+        saveSettings();
     }
 }
 
@@ -837,12 +837,13 @@ void closestChart()
     }
 
     CalibratedData* closest = findClosestChart(calib, count, &_aircraftLoc);
-    strcpy(_programData.chart, closest->filename);
+    strcpy(_settings.chart, closest->filename);
+    free(calib);
 
     // Chart could be .png or .jpg
-    char* ext = strrchr(_programData.chart, '.');
+    char* ext = strrchr(_settings.chart, '.');
     strcpy(ext, ".png");
-    FILE* inf = fopen(_programData.chart, "r");
+    FILE* inf = fopen(_settings.chart, "r");
     if (inf) {
         fclose(inf);
     }
@@ -851,11 +852,9 @@ void closestChart()
     }
 
     if (initChart()) {
-        // Save the last loaded chart name
-        saveProgramData();
+        // Save the chart name
+        saveSettings();
     }
-
-    free(calib);
 }
 
 /// <summary>
@@ -1130,7 +1129,7 @@ void updateWind()
 /// </summary>
 void doUpdate()
 {
-    if (*_programData.chart == '\0') {
+    if (*_settings.chart == '\0') {
         newChart();
     }
 
@@ -1295,7 +1294,7 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
 void showChart()
 {
     initVars();
-    loadProgramData();
+    loadSettings();
 
     if (!init()) {
         cleanup();
@@ -1306,6 +1305,9 @@ void showChart()
         cleanup();
         return;
     }
+
+    // If aircraft is initialised always start on the closest chart
+    closestChart();
 
     doUpdate();
 
@@ -1343,9 +1345,9 @@ void showChart()
             _displayWidth = event.display.width;
             _displayHeight = event.display.height;
             al_acknowledge_resize(_display);
-            _programData.width = _displayWidth;
-            _programData.height = _displayHeight;
-            saveProgramData();
+            _settings.width = _displayWidth;
+            _settings.height = _displayHeight;
+            saveSettings();
             break;
         }
 

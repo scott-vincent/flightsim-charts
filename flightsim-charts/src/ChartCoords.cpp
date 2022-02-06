@@ -287,7 +287,7 @@ bool drawOtherAircraft(Position* displayPos1, Position* displayPos2, LocData* lo
 CalibratedData* findClosestChart(CalibratedData* calib, int count, LocData* loc)
 {
     CalibratedData* closest = calib;
-    double minDistance = 99999;
+    double minDistance = MAXINT;
 
     // Calculate distance to centre point of each calibration to find nearest one
     for (int i = 0; i < count; i++) {

@@ -6,12 +6,15 @@
 
 enum DEFINITION_ID {
     DEF_SELF,
-    DEF_ALL
+    DEF_ALL,
+    DEF_TELEPORT,
+    DEF_SNAPSHOT
 };
 
 enum REQUEST_ID {
     REQ_SELF,
     REQ_ALL,
+    REQ_SNAPSHOT
 };
 
 // Externals
@@ -30,6 +33,8 @@ bool _pendingRequest = false;
 HANDLE hSimConnect = NULL;
 bool _connected = false;
 bool _shownMaxExceeded = false;
+TeleportData _teleport;
+SnapshotData _snapshot;
 
 
 void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContext)
@@ -55,15 +60,34 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 
             // Check for fake data that FS2020 sends before you have selected an airport
             if (_locData.lat > -0.02 && _locData.lat < 0.02 && _locData.lon > -0.02 && _locData.lon < 0.02 && (_locData.heading > 359.9 || _locData.heading < 0.1)) {
-                _aircraftLoc.lat = 99999;
+                _aircraftLoc.lat = MAXINT;
             }
             else {
                 memcpy(&_aircraftLoc, &_locData, _locDataSize);
             }
 
-            if (!_pendingRequest) {
+            if (_teleport.inProgress) {
+                if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_TELEPORT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _teleport.dataSize, &_teleport) != 0) {
+                    printf("Failed to teleport aircraft\n");
+                }
+                _teleport.inProgress = false;
+            }
+            else if (_snapshot.save) {
+                if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SNAPSHOT, DEF_SNAPSHOT, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_ONCE, 0, 0, 0, 0) != 0) {
+                    printf("Failed to request snapshot data\n");
+                    _snapshot.save = false;
+                }
+                // Save not complete until data received
+            }
+            else if (_snapshot.restore) {
+                if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_SNAPSHOT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _snapshot.dataSize, &_snapshot) != 0) {
+                    printf("Failed to restore snapshot data\n");
+                }
+                _snapshot.restore = false;
+            }
+            else if (!_pendingRequest) {
                 // Request data of aircraft within range
-                if (SimConnect_RequestDataOnSimObjectType(hSimConnect, REQ_ALL, DEF_ALL, AIRCRAFT_RANGE, SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT) < 0) {
+                if (SimConnect_RequestDataOnSimObjectType(hSimConnect, REQ_ALL, DEF_ALL, AIRCRAFT_RANGE, SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT) != 0) {
                     printf("Failed to request all aircraft data\n");
                 }
                 else {
@@ -71,6 +95,19 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
                 }
             }
 
+            break;
+        }
+
+        case REQ_SNAPSHOT:
+        {
+            int dataSize = pObjData->dwSize - ((int)(&pObjData->dwData) - (int)pData);
+            if (dataSize != _snapshot.dataSize) {
+                printf("Error: SimConnect expected %d bytes but received %d bytes\n", _snapshot.dataSize, dataSize);
+                return;
+            }
+
+            memcpy(&_snapshot, &pObjData->dwData, _snapshot.dataSize);
+            _snapshot.save = false;
             break;
         }
 
@@ -156,7 +193,7 @@ void addDataDef(SIMCONNECT_DATA_DEFINITION_ID defId, const char *var, const char
         result = SimConnect_AddToDataDefinition(hSimConnect, defId, var, units);
     }
 
-    if (result < 0) {
+    if (result != 0) {
         printf("SimConnect Data definition failed: %s (%s)\n", var, units);
     }
 }
@@ -180,8 +217,28 @@ void init()
     addDataDef(DEF_ALL, "Atc Id", "string");
     addDataDef(DEF_ALL, "Atc Model", "string");
 
+    addDataDef(DEF_TELEPORT, "Plane Latitude", "Degrees");
+    addDataDef(DEF_TELEPORT, "Plane Longitude", "Degrees");
+    addDataDef(DEF_TELEPORT, "Plane Heading Degrees True", "Degrees");
+    addDataDef(DEF_TELEPORT, "Plane Bank Degrees", "Degrees");
+    addDataDef(DEF_TELEPORT, "Plane Pitch Degrees", "Degrees");
+    _teleport.dataSize = 5 * sizeof(double);
+
+    // Constant teleport values
+    _teleport.bank = 0;
+    _teleport.pitch = 0;
+
+    addDataDef(DEF_SNAPSHOT, "Plane Latitude", "Degrees");
+    addDataDef(DEF_SNAPSHOT, "Plane Longitude", "Degrees");
+    addDataDef(DEF_SNAPSHOT, "Plane Heading Degrees True", "Degrees");
+    addDataDef(DEF_SNAPSHOT, "Plane Bank Degrees", "Degrees");
+    addDataDef(DEF_SNAPSHOT, "Plane Pitch Degrees", "Degrees");
+    addDataDef(DEF_SNAPSHOT, "Plane Altitude", "Feet");
+    addDataDef(DEF_SNAPSHOT, "Airspeed Indicated", "Knots");
+    _snapshot.dataSize = 7 * sizeof(double);
+
     // Start requesting data for our aircraft
-    if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_VISUAL_FRAME, 0, 0, 0, 0) < 0) {
+    if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_VISUAL_FRAME, 0, 0, 0, 0) != 0) {
         printf("Failed to start requesting own aircraft data\n");
     }
 }
@@ -189,7 +246,7 @@ void init()
 void cleanUp()
 {
     if (hSimConnect) {
-        if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_NEVER, 0, 0, 0, 0) < 0) {
+        if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_NEVER, 0, 0, 0, 0) != 0) {
             printf("Failed to stop requesting data\n");
         }
 
@@ -211,8 +268,12 @@ void server()
 
     printf(WaitMsg);
     _connected = false;
-    _aircraftLoc.lat = 99999;
+    _aircraftLoc.lat = MAXINT;
     _aircraftOtherCount = 0;
+    _teleport.inProgress = false;
+    _snapshot.loc.lat = MAXINT;
+    _snapshot.save = false;
+    _snapshot.restore = false;
 
     HRESULT result;
 
@@ -225,7 +286,7 @@ void server()
             if (result != 0) {
                 printf("Disconnected from MS FS2020\n");
                 _connected = false;
-                _aircraftLoc.lat = 99999;
+                _aircraftLoc.lat = MAXINT;
                 _aircraftOtherCount = 0;
                 printf(WaitMsg);
             }

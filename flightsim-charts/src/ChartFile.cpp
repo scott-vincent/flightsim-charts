@@ -62,8 +62,8 @@ void saveSettings()
     FILE* outf = fopen(settingsFile(), "w");
     if (!outf) {
         char msg[256];
-        sprintf(msg, "ERROR: Failed to write file %s", settingsFile());
-        showMessage(msg);
+        sprintf(msg, "Failed to write file %s", settingsFile());
+        showMessage(msg, true);
         return;
     }
 
@@ -143,22 +143,22 @@ void saveCalibration(int x, int y, Location* loc)
         char msg[256];
         *msg = '\0';
 
-        if (xDiff < 100) {
-            sprintf(msg, "CALIBRATION FAILED: Points are too close together horizontally (%d)", xDiff);
+        if (xDiff < 50) {
+            sprintf(msg, "Calibration Failed\n\nPoints are too close together horizontally (%d).\n", xDiff);
         }
-        else if (yDiff < 100) {
-            sprintf(msg, "CALIBRATION FAILED: Points are too close together vertically (%d)", yDiff);
+        else if (yDiff < 50) {
+            sprintf(msg, "Calibration Failed\n\nPoints are too close together vertically (%d).\n", yDiff);
         }
-        else if (latDiff < 0.0015) {
-            sprintf(msg, "CALIBRATION FAILED: Latitudes are too close together (%lf)", latDiff);
+        else if (latDiff < 0.001) {
+            sprintf(msg, "Calibration Failed\n\nLatitudes are too close together (%lf).\n", latDiff);
         }
-        else if (lonDiff < 0.0015) {
-            sprintf(msg, "CALIBRATION FAILED: Longitudes are too close together (%lf)", lonDiff);
+        else if (lonDiff < 0.001) {
+            sprintf(msg, "Calibration Failed\n\nLongitudes are too close together (%lf).\n", lonDiff);
         }
 
         if (*msg != '\0') {
-            // 2nd point will be requested again
-            showMessage(msg);
+            strcat(msg, "Please calibrate the 2nd point again.");
+            showMessage(msg, true);
             return;
         }
     }
@@ -173,8 +173,8 @@ void saveCalibration(int x, int y, Location* loc)
 
     FILE* outf = fopen(calibrationFile(), "w");
     if (!outf) {
-        sprintf(msg, "ERROR: Failed to write file %s", calibrationFile());
-        showMessage(msg);
+        sprintf(msg, "Failed to write file %s", calibrationFile());
+        showMessage(msg, true);
         return;
     }
 
@@ -183,9 +183,6 @@ void saveCalibration(int x, int y, Location* loc)
     }
 
     fclose(outf);
-
-    sprintf(msg, "CALIBRATING: Position %d captured as %lf, %lf", _chartData.state, loc->lat, loc->lon);
-    showMessage(msg);
 }
 
 /// <summary>
@@ -199,33 +196,33 @@ void loadCalibrationData(ChartData* chartData, char* filename = NULL)
     }
 
     FILE* inf = fopen(filename, "r");
-    if (inf != NULL) {
-        char line[256];
-        int x;
-        int y;
-        double lat;
-        double lon;
+    if (inf == NULL) {
+        return;
+    }
 
-        chartData->state = 0;
-        while (fgets(line, 256, inf) && chartData->state < 2) {
-            while (strlen(line) > 0 && (line[strlen(line) - 1] == ' '
-                || line[strlen(line) - 1] == '\r' || line[strlen(line) - 1] == '\n')) {
-                line[strlen(line) - 1] = '\0';
-            }
+    char line[256];
+    int x;
+    int y;
+    double lat;
+    double lon;
 
-            if (strlen(line) > 0) {
-                int items = sscanf(line, "%d,%d = %lf,%lf", &x, &y, &lat, &lon);
-                if (items == 4) {
-                    chartData->x[chartData->state] = x;
-                    chartData->y[chartData->state] = y;
-                    chartData->lat[chartData->state] = lat;
-                    chartData->lon[chartData->state] = lon;
-                    chartData->state++;
-                }
-            }
+    chartData->state = 0;
+    while (fgets(line, 256, inf) && chartData->state < 2) {
+        while (strlen(line) > 0 && (line[strlen(line) - 1] == ' '
+            || line[strlen(line) - 1] == '\r' || line[strlen(line) - 1] == '\n')) {
+            line[strlen(line) - 1] = '\0';
         }
 
-        fclose(inf);
+        if (strlen(line) > 0) {
+            int items = sscanf(line, "%d,%d = %lf,%lf", &x, &y, &lat, &lon);
+            if (items == 4) {
+                chartData->x[chartData->state] = x;
+                chartData->y[chartData->state] = y;
+                chartData->lat[chartData->state] = lat;
+                chartData->lon[chartData->state] = lon;
+                chartData->state++;
+            }
+        }
     }
 }
 
@@ -270,64 +267,8 @@ bool fileSelectorDialog(HWND displayHwnd)
 }
 
 /// <summary>
-/// Launch OpenStreetMap so user can calibrate chart
-/// </summary>
-void launchOpenStreetMap()
-{
-    // Extract airport ICAO from folder name or filename
-    char airport[5];
-    strcpy(airport, "EGKK");
-    bool found = false;
-
-    char filename[256];
-    strcpy(filename, _settings.chart);
-    char* last = strrchr(filename, '\\');
-    if (last) {
-        *last = '\0';
-        last = strrchr(filename, '\\');
-    }
-
-    if (last && strlen(last) == 5) {
-        strcpy(airport, &last[1]);
-        found = true;
-    }
-    else if (last && strlen(last) == 3 && last - filename > 2) {
-        airport[0] = *(last - 2);
-        airport[1] = *(last - 1);
-        airport[2] = *(last + 1);
-        airport[3] = *(last + 2);
-        found = true;
-    }
-    else {
-        // Look for 4 capital letters in filename
-        char* name = strrchr(_settings.chart, '\\');
-        while (*name != '\0') {
-            if (*name >= 'A' && *name <= 'Z' && *(name + 1) >= 'A' && *(name + 1) <= 'Z' &&
-                *(name + 2) >= 'A' && *(name + 2) <= 'Z' && *(name + 3) >= 'A' && *(name + 3) <= 'Z')
-            {
-                strncpy(airport, name, 4);
-                found = true;
-                break;
-            }
-            name++;
-        }
-    }
-
-    if (found) {
-        printf("Found airport ICAO: %s in chart path: %s\n", airport, _settings.chart);
-    }
-    else {
-        printf("Defaulting to %s as no airport ICAO found in chart path: %s\n", airport, _settings.chart);
-    }
-
-    char url[256];
-    sprintf(url, "%s%s", urlQuery, airport);
-    ShellExecute(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL);
-}
-
-/// <summary>
-/// Reads coordinates from clipboard. Clipboard can be from Little Navmap or OpenStreetMap.
-/// Returns 99999 if no valid location found.
+/// Reads coordinates from clipboard. Clipboard can be from Little Navmap, Google Maps or OpenStreetMap.
+/// Returns MAXINT if no valid location found.
 /// </summary>
 void getClipboardLocation(Location* loc)
 {
@@ -346,8 +287,8 @@ void getClipboardLocation(Location* loc)
         CloseClipboard();
     }
 
-    loc->lat = 99999;
-    loc->lon = 99999;
+    loc->lat = MAXINT;
+    loc->lon = MAXINT;
 
     if (strchr(text, '°')) {
         // Little Navmap format, e.g. 51° 28' 29.60" N 0° 29' 5.19" W
@@ -386,9 +327,19 @@ void getClipboardLocation(Location* loc)
             loc->lat = strtod(last + 1, NULL);
         }
     }
+    else {
+        // Google Maps format, e.g. 51.471327034054205, -0.4534810854350456
+        double lat;
+        double lon;
+        int count = sscanf(text, "%lf, %lf", &lat, &lon);
+        if (count == 2) {
+            loc->lat = lat;
+            loc->lon = lon;
+        }
+    }
 
-    if (loc->lon == 99999) {
-        loc->lat = 99999;
+    if (loc->lon == MAXINT) {
+        loc->lat = MAXINT;
     }
 }
 

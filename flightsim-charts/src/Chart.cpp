@@ -10,7 +10,6 @@
 
 // Constants
 const char ProgramName[] = "FlightSim Charts";
-const char MenuFile[] = "images/menu.png";
 const char AircraftFile[] = "images/aircraft.png";
 const char AircraftSmallFile[] = "images/aircraft_small.png";
 const char AircraftOtherFile[] = "images/aircraft_other.png";
@@ -30,6 +29,8 @@ extern WindData _windData;
 extern LocData _aircraftOtherLoc[MAX_AIRCRAFT];
 extern int _aircraftOtherCount;
 extern int _locDataSize;
+extern TeleportData _teleport;
+extern SnapshotData _snapshot;
 
 // Variables
 double DegreesToRadians = ALLEGRO_PI / 180.0f;
@@ -41,8 +42,6 @@ int _displayWidth;
 int _displayHeight;
 HWND _displayWindow;
 int _winCheckDelay = 0;
-DrawData _menu;
-DrawData _menuSelect;
 DrawData _chart;
 DrawData _zoomed;
 AircraftDrawData _aircraft;
@@ -69,7 +68,6 @@ int _drawDataSize = sizeof(DrawData);
 int _mouseStartZ = 0;
 int _titleState;
 int _titleDelay;
-bool _menuActive = false;
 bool _showTags = true;
 bool _showCalibration = false;
 Location _clickedLoc;
@@ -77,15 +75,185 @@ Position _clickedPos;
 Position _clipboardPos;
 int _windDirection = -1;
 int _windSpeed = -1;
+HMENU _menu = NULL;
+int _menuItem = -1;
+int _lastRotate = MAXINT;
 
+enum MENU_ITEMS {
+    MENU_LOAD_CHART,
+    MENU_LOAD_CLOSEST,
+    MENU_LOCATE_AIRCRAFT,
+    MENU_ROTATE_AGAIN,
+    MENU_ROTATE_LEFT_20,
+    MENU_ROTATE_RIGHT_20,
+    MENU_ROTATE_LEFT_90,
+    MENU_ROTATE_RIGHT_90,
+    MENU_TELEPORT_HERE,
+    MENU_TELEPORT_CLIPBOARD,
+    MENU_TELEPORT_RESTORE_LOCATION,
+    MENU_TELEPORT_SAVE_LOCATION,
+    MENU_SHOW_TAGS,
+    MENU_SHOW_CALIBRATION,
+    MENU_RECALIBRATE
+};
+
+// Prototypes
+void newChart();
+void closestChart();
+void clearCustomPoints();
+
+
+int showMessage(const char *message, bool isError, const char *title, bool canCancel)
+{
+    if (title == NULL) {
+        title = ProgramName;
+    }
+
+    UINT msgType;
+    if (canCancel) {
+        msgType = MB_OKCANCEL;
+    }
+    else {
+        msgType = MB_OK;
+    }
+
+    if (isError) {
+        msgType |= MB_ICONERROR;
+    }
+    else {
+        msgType |= MB_ICONINFORMATION;
+    }
+
+    return MessageBox(_displayWindow, message, title, msgType);
+}
+
+int showClipboardMessage(bool isError, bool canCancel = false)
+{
+    char* title = NULL;
+    char calibTitle[256];
+    char message[512];
+
+    if (isError) {
+        strcpy(message, "Clipboard does not contain the required information.\n");
+        strcat(message, "Use one of the following methods.\n\n");
+    }
+    else {
+        title = calibTitle;
+        sprintf(calibTitle, "%s - How To Calibrate Your Chart", ProgramName);
+        strcpy(message, "Two points are required for calibration. The window title shows which point is being requested.\n\n");
+        strcat(message, "Use one of the following methods, then right-click on this chart at the equivalent position.\n\n");
+    }
+
+    strcat(message, "Little Navmap:\n");
+    strcat(message, "     Right-click on desired location\n");
+    strcat(message, "     More\n");
+    strcat(message, "     Copy to clipboard\n\n");
+    strcat(message, "Google Maps:\n");
+    strcat(message, "     Right-click on desired location\n");
+    strcat(message, "     Select top line (lat, lon)\n\n");
+    strcat(message, "OpenStreetMap:\n");
+    strcat(message, "     Right-click on desired location\n");
+    strcat(message, "     Centre map here\n");
+    strcat(message, "     Copy URL");
+
+    return showMessage(message, isError, title, canCancel);
+}
+
+/// <summary>
+/// Display a message in the window title bar that disappears after about 3 seconds.
+/// </summary>
+void showTitleMessage(const char* message)
+{
+    al_set_window_title(_display, message);
+    _titleState = -9;
+    _titleDelay = 50;
+}
+
+void cancelCalibration()
+{
+    // Calibration cancelled so revert to previous calibration if available
+    _titleState = -2;
+    _chartData.state = -1;
+    loadCalibrationData(&_chartData);
+}
+
+void updateWindowTitle()
+{
+    const char calibrate[] = "Right-click on this chart to set POSITION";
+    const char cancel[] = "or middle-click to cancel";
+
+    char title[256];
+    char titleStart[256];
+
+    if (*_tagText == '\0') {
+        strcpy(titleStart, ProgramName);
+    }
+    else {
+        strcpy(titleStart, _tagText);
+    }
+
+    if (*_settings.chart == '\0') {
+        strcpy(title, titleStart);
+    }
+    else {
+        char* name = strrchr(_settings.chart, '\\');
+        if (name) {
+            name++;
+        }
+        else {
+            name = _settings.chart;
+        }
+
+        char chart[256];
+        strcpy(chart, name);
+        char* ext = strrchr(chart, '.');
+        if (ext) {
+            *ext = '\0';
+        }
+
+        sprintf(title, "%s - %s", titleStart, chart);
+    }
+
+    _titleState = _chartData.state;
+
+    switch (_chartData.state) {
+    case -1:
+        al_set_window_title(_display, title);
+        showMessage("This chart needs calibrating.\nSelect 'Re-calibrate' from the right-click menu.", false);
+        break;
+
+    case 0:
+        sprintf(title, "%s - %s 1 %s", ProgramName, calibrate, cancel);
+        al_set_window_title(_display, title);
+        if (showClipboardMessage(false, true) == IDCANCEL) {
+            cancelCalibration();
+        }
+        break;
+
+    case 1:
+        sprintf(title, "%s - %s 2 %s", ProgramName, calibrate, cancel);
+        al_set_window_title(_display, title);
+        break;
+
+    default:
+        if (_showCalibration && _clickedLoc.lat != MAXINT) {
+            char str[64];
+            locationToString(&_clickedLoc, str);
+            sprintf(title, "%s   %s", title, str);
+            al_set_window_title(_display, title);
+        }
+        else {
+            al_set_window_title(_display, title);
+        }
+        break;
+    }
+}
 
 /// <summary>
 /// Initialise global variables
 /// </summary>
 void initVars()
 {
-    _menu.bmp = NULL;
-    _menuSelect.bmp = NULL;
     _chart.bmp = NULL;
     _zoomed.bmp = NULL;
     _aircraft.bmp = NULL;
@@ -116,9 +284,208 @@ void initVars()
 
     _chartData.state = -1;
     _titleState = -2;
-    _clickedLoc.lat = 99999;
+    _clickedLoc.lat = MAXINT;
     _clickedPos.x = -1;
     _clipboardPos.x = -1;
+}
+
+int enabledState(bool isEnabled)
+{
+    if (isEnabled) {
+        return MF_ENABLED;
+    }
+    else {
+        return MF_DISABLED;
+    }
+}
+
+int checkedState(bool isChecked)
+{
+    if (isChecked) {
+        return MF_CHECKED;
+    }
+    else {
+        return MF_UNCHECKED;
+    }
+}
+
+/// <summary>
+/// Determine which menu items should be enabled and which items should be checked
+/// </summary>
+void updateMenu()
+{
+    bool active = _aircraftLoc.lat != MAXINT;
+    bool calibrated = _chartData.state == 2;
+
+    EnableMenuItem(_menu, MENU_LOAD_CLOSEST, enabledState(active));
+    EnableMenuItem(_menu, MENU_LOCATE_AIRCRAFT, enabledState(active && calibrated));
+    EnableMenuItem(_menu, MENU_ROTATE_AGAIN, enabledState(active && !_teleport.inProgress && _lastRotate != MAXINT));
+    EnableMenuItem(_menu, MENU_ROTATE_LEFT_20, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(_menu, MENU_ROTATE_RIGHT_20, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(_menu, MENU_ROTATE_LEFT_90, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(_menu, MENU_ROTATE_RIGHT_90, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(_menu, MENU_TELEPORT_HERE, enabledState(active && calibrated && !_teleport.inProgress));
+    EnableMenuItem(_menu, MENU_TELEPORT_CLIPBOARD, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(_menu, MENU_TELEPORT_RESTORE_LOCATION, enabledState(active && !_snapshot.save && _snapshot.loc.lat != MAXINT));
+    EnableMenuItem(_menu, MENU_TELEPORT_SAVE_LOCATION, enabledState(active && !_snapshot.save));
+    EnableMenuItem(_menu, MENU_SHOW_TAGS, enabledState(calibrated));
+    EnableMenuItem(_menu, MENU_SHOW_CALIBRATION, enabledState(calibrated));
+
+    CheckMenuItem(_menu, MENU_SHOW_TAGS, checkedState(_showTags));
+    CheckMenuItem(_menu, MENU_SHOW_CALIBRATION, checkedState(_showCalibration));
+}
+
+bool windowCallback(ALLEGRO_DISPLAY* display, UINT message,
+    WPARAM wparam, LPARAM lparam, LRESULT* result, void* userdata)
+{
+    // Activate context menu on right button release
+    if (message == WM_RBUTTONUP && _teleport.pos.x != MAXINT) {
+        POINT menuPos;
+        menuPos.x = _teleport.pos.x;
+        menuPos.y = _teleport.pos.y;
+        ClientToScreen(_displayWindow, &menuPos);
+
+        // FS2020 messes up cursor pos if it was active immediately before
+        // this right click so fix it here.
+        SetCursorPos(menuPos.x, menuPos.y);
+
+        updateMenu();
+        TrackPopupMenu(_menu, TPM_RIGHTBUTTON, menuPos.x, menuPos.y, 0, _displayWindow, NULL);
+    }
+    else if (message == WM_COMMAND) {
+        // Menu item must be actioned on main thread to avoid contention
+        _menuItem = LOWORD(wparam);
+    }
+
+    return false;
+}
+
+void rotateAircraft(double adjustAngle)
+{
+    _lastRotate = adjustAngle;
+    _teleport.loc.lat = _aircraftLoc.lat;
+    _teleport.loc.lon = _aircraftLoc.lon;
+    _teleport.heading = _aircraftLoc.heading + _lastRotate;
+    _teleport.inProgress = true;
+}
+
+void actionMenuItem()
+{
+    switch (_menuItem) {
+
+    case MENU_LOAD_CHART:
+        newChart();
+        _showCalibration = false;
+        break;
+
+    case MENU_LOAD_CLOSEST:
+        closestChart();
+        _showCalibration = false;
+        break;
+
+    case MENU_LOCATE_AIRCRAFT:
+        // Centre chart on current aircraft location
+        Position pos;
+        locationToChartPos(_aircraftLoc.lat, _aircraftLoc.lon, &pos);
+        _chart.x = pos.x;
+        _chart.y = pos.y;
+        break;
+
+    case MENU_ROTATE_AGAIN:
+        rotateAircraft(_lastRotate);
+        break;
+
+    case MENU_ROTATE_LEFT_20:
+        rotateAircraft(-20);
+        break;
+
+    case MENU_ROTATE_RIGHT_20:
+        rotateAircraft(20);
+        break;
+
+    case MENU_ROTATE_LEFT_90:
+        rotateAircraft(-90);
+        break;
+
+    case MENU_ROTATE_RIGHT_90:
+        rotateAircraft(90);
+        break;
+
+    case MENU_TELEPORT_HERE:
+        Position clickedPos;
+        displayToChartPos(_teleport.pos.x, _teleport.pos.y, &_clickedPos);
+        chartPosToLocation(_clickedPos.x, _clickedPos.y, &_teleport.loc);
+        _teleport.heading = _aircraftLoc.heading;
+        _teleport.inProgress = true;
+        break;
+
+    case MENU_TELEPORT_CLIPBOARD:
+        getClipboardLocation(&_teleport.loc);
+        if (_teleport.loc.lat == MAXINT) {
+            showClipboardMessage(true);
+        }
+        else {
+            _teleport.heading = _aircraftLoc.heading;
+            _teleport.inProgress = true;
+        }
+        break;
+
+    case MENU_TELEPORT_RESTORE_LOCATION:
+        _snapshot.restore = true;
+        break;
+
+    case MENU_TELEPORT_SAVE_LOCATION:
+        _snapshot.save = true;
+        break;
+
+    case MENU_SHOW_TAGS:
+        _showTags = !_showTags;
+        break;
+
+    case MENU_SHOW_CALIBRATION:
+        _showCalibration = !_showCalibration;
+        clearCustomPoints();
+        break;
+
+    case MENU_RECALIBRATE:
+        _chartData.state = 0;
+        _showCalibration = false;
+        break;
+    }
+}
+
+bool initMenu()
+{
+    HMENU rotateMenu = CreatePopupMenu();
+    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_LEFT_20, "-20°");
+    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_RIGHT_20, "+20°");
+    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_LEFT_90, "-90°");
+    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_RIGHT_90, "+90°");
+
+    HMENU teleportMenu = CreatePopupMenu();
+    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_HERE, "To here");
+    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_CLIPBOARD, "To clipboard location");
+    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_RESTORE_LOCATION, "Restore location");
+    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_SAVE_LOCATION, "Save location");
+
+    _menu = CreatePopupMenu();
+    AppendMenu(_menu, MF_STRING, MENU_LOAD_CHART, "Load chart");
+    AppendMenu(_menu, MF_STRING, MENU_LOAD_CLOSEST, "Load closest");
+    AppendMenu(_menu, MF_STRING, MENU_LOCATE_AIRCRAFT, "Locate aircraft");
+    AppendMenu(_menu, MF_STRING, MENU_ROTATE_AGAIN, "Rotate again");
+    AppendMenu(_menu, MF_STRING | MF_POPUP, (UINT_PTR)rotateMenu, "Rotate aircraft");
+    AppendMenu(_menu, MF_STRING | MF_POPUP, (UINT_PTR)teleportMenu, "Teleport aircraft");
+    AppendMenu(_menu, MF_STRING, MENU_SHOW_TAGS, "Show tags");
+    AppendMenu(_menu, MF_STRING, MENU_SHOW_CALIBRATION, "Show calibration");
+    AppendMenu(_menu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(_menu, MF_STRING, MENU_RECALIBRATE, "Re-calibrate chart");
+
+    // Listen for menu events
+    if (!al_win_add_window_callback(_display, &windowCallback, NULL)) {
+        return false;
+    }
+
+    return true;
 }
 
 /// <summary>
@@ -180,6 +547,26 @@ bool init()
     _displayWindow = al_get_win_window_handle(_display);
     ShowWindow(_displayWindow, SW_SHOWNORMAL);
 
+    // Make sure window is within monitor bounds
+    bool visible = false;
+    ALLEGRO_MONITOR_INFO monitorInfo;
+    int numMonitors = al_get_num_video_adapters();
+    for (int i = 0; i < numMonitors; i++) {
+        al_get_monitor_info(i, &monitorInfo);
+
+        if (_settings.x >= monitorInfo.x1 && _settings.x < monitorInfo.x2
+            && _settings.y >= monitorInfo.y1 && _settings.y < monitorInfo.y2)
+        {
+            visible = true;
+            break;
+        }
+    }
+
+    if (!visible && numMonitors > 0) {
+        _settings.x = monitorInfo.x1;
+        _settings.y = monitorInfo.y1;
+    }
+
     // Position window
     al_set_window_position(_display, _settings.x, _settings.y);
 
@@ -197,6 +584,11 @@ bool init()
 
     al_register_event_source(_eventQueue, al_get_timer_event_source(_timer));
 
+    if (!initMenu()) {
+        printf("Failed to initialise menu\n");
+        return false;
+    }
+
     return true;
 }
 
@@ -212,8 +604,6 @@ void cleanupBitmap(ALLEGRO_BITMAP* bmp)
 /// </summary>
 void cleanup()
 {
-    cleanupBitmap(_menu.bmp);
-    cleanupBitmap(_menuSelect.bmp);
     cleanupBitmap(_chart.bmp);
     cleanupBitmap(_zoomed.bmp);
     cleanupBitmap(_aircraft.bmp);
@@ -245,20 +635,15 @@ void cleanup()
         al_destroy_font(_font);
     }
 
+    if (_menu) {
+        al_win_remove_window_callback(_display, &windowCallback, NULL);
+        DestroyMenu(_menu);
+    }
+
     if (_display) {
         al_destroy_display(_display);
         al_inhibit_screensaver(false);
     }
-}
-
-/// <summary>
-/// Display a message in the window title bar that disappears after about 3 seconds.
-/// </summary>
-void showMessage(const char* message)
-{
-    al_set_window_title(_display, message);
-    _titleState = -9;
-    _titleDelay = 50;
 }
 
 void createTagText(char* callsign, char* model, char* tagText)
@@ -279,99 +664,6 @@ void createTagText(char* callsign, char* model, char* tagText)
     }
 
     sprintf(tagText, "%s %s", callsign, modelStart);
-}
-
-/// <summary>
-/// Use window title to request calibration
-/// </summary>
-void updateWindowTitle()
-{
-    const char preCalibrate[] = "THIS CHART NEEDS CALIBRATING: Select 'Re-calibrate' from the right-click menu";
-    const char calibrate[] = "Use Little Navmap (More->Copy to clipboard) then right-click on this chart to set POSITION";
-    const char cancel[] = "(middle-click to cancel)";
-
-    char title[256];
-    char titleStart[256];
-
-    if (*_tagText == '\0') {
-        strcpy(titleStart, ProgramName);
-    }
-    else {
-        strcpy(titleStart, _tagText);
-    }
-
-    if (*_settings.chart == '\0') {
-        strcpy(title, titleStart);
-    }
-    else {
-        char* name = strrchr(_settings.chart, '\\');
-        if (name) {
-            name++;
-        }
-        else {
-            name = _settings.chart;
-        }
-
-        char chart[256];
-        strcpy(chart, name);
-        char* ext = strrchr(chart, '.');
-        if (ext) {
-            *ext = '\0';
-        }
-
-        sprintf(title, "%s - %s", titleStart, chart);
-    }
-
-    switch (_chartData.state) {
-    case -1:
-        sprintf(title, "%s - %s", ProgramName, preCalibrate);
-        al_set_window_title(_display, title);
-        break;
-    case 0:
-        sprintf(title, "%s - %s 1 %s", ProgramName, calibrate, cancel);
-        al_set_window_title(_display, title);
-        break;
-    case 1:
-        sprintf(title, "%s - %s 2 %s", ProgramName, calibrate, cancel);
-        al_set_window_title(_display, title);
-        break;
-    default:
-        if (_showCalibration && _clickedLoc.lat != 99999) {
-            char str[64];
-            locationToString(&_clickedLoc, str);
-            sprintf(title, "%s   %s", title, str);
-            al_set_window_title(_display, title);
-        }
-        else {
-            al_set_window_title(_display, title);
-        }
-        break;
-    }
-
-    _titleState = _chartData.state;
-}
-
-bool initMenu()
-{
-    _menu.bmp = al_load_bitmap(MenuFile);
-    if (!_menu.bmp) {
-        printf("Missing file: %s\n", MenuFile);
-        return false;
-    }
-
-    _menu.width = al_get_bitmap_width(_menu.bmp);
-    _menu.height = al_get_bitmap_height(_menu.bmp);
-
-    _menuSelect.width = _menu.width - 18;
-    _menuSelect.height = 22;
-    _menuSelect.bmp = al_create_bitmap(_menuSelect.width, _menuSelect.height);
-
-    al_set_target_bitmap(_menuSelect.bmp);
-    al_clear_to_color(al_map_rgb(0xbb, 0xbb, 0xbb));
-
-    al_set_target_backbuffer(_display);
-
-    return true;
 }
 
 /// <summary>
@@ -402,8 +694,8 @@ bool initChart()
     _chart.bmp = al_load_bitmap(_settings.chart);
     if (!_chart.bmp) {
         char msg[256];
-        sprintf(msg, "ERROR: Failed to load chart %s\n", _settings.chart);
-        showMessage(msg);
+        sprintf(msg, "Failed to load chart %s\n", _settings.chart);
+        showMessage(msg, true);
         *_settings.chart = '\0';
         return false;
     }
@@ -414,11 +706,7 @@ bool initChart()
     // Centre map and zoom fully out
     resetMap();
 
-    al_set_target_backbuffer(_display);
-
-    // Load calibration if available
-    _chartData.state = -1;
-    _titleState = -2;
+    _titleState = -1;
     loadCalibrationData(&_chartData);
 
     return true;
@@ -444,13 +732,17 @@ bool initAircraft()
 {
     _aircraft.bmp = al_load_bitmap(AircraftFile);
     if (!_aircraft.bmp) {
-        printf("Missing file: %s\n", AircraftFile);
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", AircraftFile);
+        showMessage(msg, true);
         return false;
     }
 
     _aircraft.otherBmp = al_load_bitmap(AircraftOtherFile);
     if (!_aircraft.otherBmp) {
-        printf("Missing file: %s\n", AircraftOtherFile);
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", AircraftOtherFile);
+        showMessage(msg, true);
         return false;
     }
 
@@ -459,13 +751,16 @@ bool initAircraft()
 
     _aircraft.smallBmp = al_load_bitmap(AircraftSmallFile);
     if (!_aircraft.smallBmp) {
-        printf("Missing file: %s\n", AircraftSmallFile);
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", AircraftSmallFile);
         return false;
     }
 
     _aircraft.smallOtherBmp = al_load_bitmap(AircraftSmallOtherFile);
     if (!_aircraft.smallOtherBmp) {
-        printf("Missing file: %s\n", AircraftSmallOtherFile);
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", AircraftSmallOtherFile);
+        showMessage(msg, true);
         return false;
     }
 
@@ -478,7 +773,9 @@ bool initAircraft()
     // Label for aircraft info when it is off the screen
     _aircraftLabel.bmp = al_load_bitmap(LabelFile);
     if (!_aircraftLabel.bmp) {
-        printf("Missing file: %s\n", LabelFile);
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", LabelFile);
+        showMessage(msg, true);
         return false;
     }
 
@@ -496,7 +793,9 @@ bool initMarker()
 {
     _marker.bmp = al_load_bitmap(MarkerFile);
     if (!_marker.bmp) {
-        printf("Missing file: %s\n", MarkerFile);
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", MarkerFile);
+        showMessage(msg, true);
         return false;
     }
 
@@ -511,7 +810,9 @@ bool initRing()
 {
     _ring.bmp = al_load_bitmap(RingFile);
     if (!_ring.bmp) {
-        printf("Missing file: %s\n", RingFile);
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", RingFile);
+        showMessage(msg, true);
         return false;
     }
 
@@ -526,7 +827,9 @@ bool initWind()
 {
     _arrow.bmp = al_load_bitmap(ArrowFile);
     if (!_arrow.bmp) {
-        printf("Missing file: %s\n", ArrowFile);
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", ArrowFile);
+        showMessage(msg, true);
         return false;
     }
 
@@ -552,7 +855,7 @@ bool initWind()
 
 void drawOwnAircraft()
 {
-    if (_aircraft.x == 99999) {
+    if (_aircraft.x == MAXINT) {
         return;
     }
 
@@ -721,21 +1024,6 @@ void render()
     int y = 40;
     al_draw_scaled_rotated_bitmap(_arrow.bmp, _arrow.x, _arrow.y, x, y, 0.15, 0.2, (180 + _windDirection) * DegreesToRadians, 0);
     al_draw_bitmap_region(_windInfoCopy.bmp, 0, 0, _windInfoCopy.width, _windInfo.height, x + 26, y - _windInfo.height / 2, 0);
-
-    // Draw menu
-    if (_menuActive) {
-        al_draw_bitmap(_menu.bmp, _menu.x, _menu.y, 0);
-        // X is used to store the currently selected item number
-        if (_menuSelect.x > 0) {
-            // Set blender to multiply (shades of grey darken, white has no effect)
-            al_set_blender(ALLEGRO_ADD, ALLEGRO_DEST_COLOR, ALLEGRO_ZERO);
-
-            al_draw_bitmap(_menuSelect.bmp, _menu.x + 11, _menuSelect.y, 0);
-
-            // Restore normal blender
-            al_set_blender(ALLEGRO_ADD, ALLEGRO_ALPHA, ALLEGRO_INVERSE_ALPHA);
-        }
-    }
 }
 
 /// <summary>
@@ -743,10 +1031,6 @@ void render()
 /// </summary>
 bool doInit()
 {
-    if (!initMenu()) {
-        return false;
-    }
-
     // Don't fail if no chart loaded yet
     initChart();
 
@@ -823,7 +1107,7 @@ void newChart()
 /// </summary>
 void closestChart()
 {
-    if (_aircraftLoc.lat == 99999) {
+    if (_aircraftLoc.lat == MAXINT) {
         return;
     }
 
@@ -863,120 +1147,10 @@ void closestChart()
 /// </summary>
 void clearCustomPoints()
 {
-    _clickedLoc.lat = 99999;
+    _clickedLoc.lat = MAXINT;
     _clickedPos.x = -1;
     _clipboardPos.x = -1;
     _titleState = -2;
-}
-
-/// <summary>
-/// See if mouse is over a selectable menu item
-/// </summary>
-void menuSelect(int mouseY)
-{
-    _menuSelect.y = _menu.y + 17;
-
-    if (_mouse.y < _menuSelect.y) {
-        return;
-    }
-
-    int nextItem = 1;
-    int itemHeight = 25;
-
-    _menuSelect.x = -1;
-    while (_menuSelect.x == -1) {
-        switch (nextItem) {
-            case 1:     // Load Chart
-            case 2:     // Load Closest
-            case 3:     // Show Tags
-            case 6:     // Exit
-                if (_mouse.y < _menuSelect.y + itemHeight) {
-                    _menuSelect.x = nextItem;
-                }
-                else {
-                    _menuSelect.y += itemHeight;
-                }
-                break;
-
-            case 4:     // Show Calibration
-                if (_mouse.y < _menuSelect.y + itemHeight) {
-                    _menuSelect.x = nextItem;
-                }
-                else {
-                    _menuSelect.y += itemHeight + 12;
-                    if (_mouse.y < _menuSelect.y) {
-                        _menuSelect.x = 0;
-                    }
-                }
-                break;
-
-            case 5:     // Re-calibrate
-                if (_mouse.y < _menuSelect.y + itemHeight) {
-                    _menuSelect.x = nextItem;
-                }
-                else {
-                    _menuSelect.y += itemHeight + 14;
-                    if (_mouse.y < _menuSelect.y) {
-                        _menuSelect.x = 0;
-                    }
-                }
-                break;
-
-            default:
-                _menuSelect.x = 0;
-                break;
-        }
-
-        nextItem++;
-    }
-}
-
-/// <summary>
-/// A menu item has been clicked
-/// </summary>
-void menuAction()
-{
-    switch (_menuSelect.x) {
-        case 1:
-            // Load chart
-            newChart();
-            _showCalibration = false;
-            break;
-
-        case 2:
-            // Load closest
-            closestChart();
-            _showCalibration = false;
-            break;
-
-        case 3:
-            // Show tags
-            if (_chartData.state == 2) {
-                _showTags = !_showTags;
-            }
-            break;
-
-        case 4:
-            // Show calibration
-            if (_chartData.state == 2) {
-                _showCalibration = !_showCalibration;
-            }
-            clearCustomPoints();
-            break;
-
-        case 5:
-            // Re-calibrate
-            _chartData.state = 0;
-            _showCalibration = false;
-            // Little Navmap is now the preferred way to calibrate so don't launch OpenStreetMap.
-            //launchOpenStreetMap();
-            break;
-
-        case 6:
-            // Exit
-            _quit = true;
-            break;
-    }
 }
 
 void updateOwnLabel(char *newLabel)
@@ -997,8 +1171,8 @@ void updateOwnLabel(char *newLabel)
 
 void updateOwnAircraft()
 {
-    if (_chartData.state != 2 || _aircraftLoc.lat == 99999) {
-        _aircraft.x = 99999;
+    if (_chartData.state != 2 || _aircraftLoc.lat == MAXINT) {
+        _aircraft.x = MAXINT;
         return;
     }
 
@@ -1021,8 +1195,6 @@ void updateOwnAircraft()
         strcpy(_tagText, newTag);
         _titleState = -2;
     }
-
-    //printf("%s (self) - lat: %f  lon: %f  heading:%f  wingSpan: %f\n", _tagText, _aircraftLoc.lat, _aircraftLoc.lon, _aircraftLoc.heading, _aircraftLoc.wingSpan);
 }
 
 /// <summary>
@@ -1075,8 +1247,6 @@ void updateOtherTags()
                 _otherTag[i].tag.bmp = NULL;
             }
         }
-
-        //printf("%d: %s - lat: %f  lon: %f  heading:%f  wingSpan: %f\n", i, _otherTag[i].tagText, _snapshotOtherLoc[i].lat, _snapshotOtherLoc[i].lon, _snapshotOtherLoc[i].heading, _snapshotOtherLoc[i].wingSpan);
     }
 
     // Cleanup old tags
@@ -1140,13 +1310,6 @@ void doUpdate()
         _mouseData.dragY = _mouseData.dragStartY - _mouse.y;
     }
 
-    if (_menuActive) {
-        _menuSelect.x = 0;
-        if (_mouse.x >= _menu.x && _mouse.x < _menu.x + _menu.width && _mouse.y >= _menu.y && _mouse.y < _menu.y + _menu.height) {
-            menuSelect(_mouse.y);
-        }
-    }
-
     _chart.scale = 100 + _mouseStartZ + _mouse.z;
 
     if (_chart.scale < MinScale) {
@@ -1162,7 +1325,6 @@ void doUpdate()
     double zoomScale = _chart.scale * _chart.scale / 10000.0;
     if (_zoomed.scale != zoomScale) {
         _zoomed.scale = zoomScale;
-        _menuActive = false;
 
         cleanupBitmap(_zoomed.bmp);
         _zoomed.bmp = NULL;
@@ -1210,34 +1372,25 @@ void doKeypress(ALLEGRO_EVENT* event)
 /// </summary>
 void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
 {
+    al_get_mouse_state(&_mouse);
+
     if (event->mouse.button == 1) {
         if (isPress) {
             // Left mouse button pressed
-            if (_menuActive && _mouse.x >= _menu.x && _mouse.x < _menu.x + _menu.width && _mouse.y >= _menu.y && _mouse.y < _menu.y + _menu.height) {
-                // X is used to store the item number
-                if (_menuSelect.x > 0) {
-                    // Menu item has been clicked
-                    _menuActive = false;
-                    menuAction();
-                }
-            }
-            else {
-                _menuActive = false;
-                _mouseData.dragging = true;
-                _mouseData.dragStartX = _mouse.x;
-                _mouseData.dragStartY = _mouse.y;
+            _mouseData.dragging = true;
+            _mouseData.dragStartX = _mouse.x;
+            _mouseData.dragStartY = _mouse.y;
 
-                // Show clicked coord in window title if showing calibration
-                if (_showCalibration && _chartData.state == 2) {
-                    displayToChartPos(_mouse.x, _mouse.y, &_clickedPos);
-                    chartPosToLocation(_clickedPos.x, _clickedPos.y, &_clickedLoc);
+            // Show clicked coord in window title if showing calibration
+            if (_showCalibration && _chartData.state == 2) {
+                displayToChartPos(_mouse.x, _mouse.y, &_clickedPos);
+                chartPosToLocation(_clickedPos.x, _clickedPos.y, &_clickedLoc);
 
-                    Location loc;
-                    getClipboardLocation(&loc);
-                    locationToChartPos(loc.lat, loc.lon, &_clipboardPos);
+                Location loc;
+                getClipboardLocation(&loc);
+                locationToChartPos(loc.lat, loc.lon, &_clipboardPos);
 
-                    _titleState = -2;
-                }
+                _titleState = -2;
             }
         }
         else {
@@ -1255,30 +1408,37 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
         if (isPress) {
             // Right mouse button pressed
             if (_chartData.state == 0 || _chartData.state == 1) {
+                _teleport.pos.x = MAXINT;
                 Location loc;
                 getClipboardLocation(&loc);
-                if (loc.lat == 99999) {
-                    showMessage("ERROR: Use Little Navmap (right-click/More/Copy to clipboard) or OpenStreetMap (right-click/Centre map here/Copy URL).");
+                if (loc.lat == MAXINT) {
+                    showClipboardMessage(true);
                 }
                 else {
                     saveCalibration(_mouse.x, _mouse.y, &loc);
+                    if (_chartData.state == 1) {
+                        showTitleMessage("CALIBRATING: Position 1 captured");
+                    }
+                    else if (_chartData.state == 2) {
+                        showTitleMessage("CALIBRATING: Position 2 captured");
+
+                        // Turn on show calibration straight after a chart is calibrated
+                        _showCalibration = true;
+                    }
                 }
             }
             else {
-                _menu.x = _mouse.x - 3;
-                _menu.y = _mouse.y - 3;
-                _menuActive = true;
+                // Save clicked position
+                _teleport.pos.x = _mouse.x;
+                _teleport.pos.y = _mouse.y;
             }
         }
     }
     else if (event->mouse.button == 3) {
         if (isPress) {
             // Middle mouse button pressed
-            _menuActive = false;
-
             if (_chartData.state == 0 || _chartData.state == 1) {
-                // Calibration cancelled
-                _chartData.state = -1;
+                cancelCalibration();
             }
             else {
                 // Centre map and zoom fully out
@@ -1321,6 +1481,10 @@ void showChart()
 
         switch (event.type) {
         case ALLEGRO_EVENT_TIMER:
+            if (_menuItem != -1) {
+                actionMenuItem();
+                _menuItem = -1;
+            }
             doUpdate();
             redraw = true;
             break;

@@ -91,5 +91,30 @@ struct Location {
     double lon;
 };
 
+struct TeleportData {
+    // Data to send to SimConnect must come first
+    Location loc;
+    double heading;
+    double bank;
+    double pitch;
+
+    int dataSize;
+    Position pos;
+    bool inProgress;
+};
+
+struct SnapshotData {
+    Location loc;
+    double heading;
+    double bank;
+    double pitch;
+    double alt;
+    double speed;
+
+    int dataSize;
+    bool save;
+    bool restore;
+};
+
 // Prototypes
-extern void showMessage(const char*);
+int showMessage(const char* message, bool isError, const char* title = NULL, bool canCancel = false);

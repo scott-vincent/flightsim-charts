@@ -8,6 +8,7 @@ const int MAX_CHARTS = 1500;
 const int AIRCRAFT_RANGE = 8000;  // metres
 const int WINGSPAN_SMALL = 60;    // feet
 const char DefaultChart[] = "Airport Charts\\EG\\LL\\EGLL Heathrow.png";
+const int DefaultFPS = 8;
 const char DegreesSymbol[] = "\xC2\xB0";
 
 struct DrawData {
@@ -74,6 +75,7 @@ struct Settings {
     int width;
     int height;
     char chart[256];
+    int framesPerSec;
 };
 
 struct CalibratedData {

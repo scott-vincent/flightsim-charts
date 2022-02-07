@@ -16,7 +16,7 @@ Charts for most airports can be downloaded from the internet and are most often 
 
 You can download the latest release as a zip file from here:
 
-Link: [Latest release of FlightSim-Charts](https://github.com/scott-vincent/flightsim-charts/releases/latest/download/flightsim-charts-v1.2.0-Windows-x64.zip)
+Link: [Latest release of FlightSim-Charts](https://github.com/scott-vincent/flightsim-charts/releases/latest/download/flightsim-charts-v1.2.1-Windows-x64.zip)
 
 Open the zip file and drag the flightsim-charts folder onto your desktop (or anywhere you want on your PC). Open the folder on your desktop and run flightsim-charts.exe. The first time you run it you will get a warning saying "Windows protected your PC". To continue, you need to click "More info" and then "Run anyway". WIndows always gives this warning for downloaded files. I can assure you the file is safe as I've built it myself but you can always right-click it and virus scan it if you like.
 
@@ -36,6 +36,10 @@ This program must run on the same host as MS FS2020 and uses the Microsoft SimCo
 If you want to confirm your chart is calibrated correctly use the Show Calibration option on the right-click menu. This will show two red crosses at the two points you calibrated but it also allows you to check any other points on the chart.
 
 Any point can be checked using Little Navmap. Right click on the point in Little Navmap and copy it to the clipboard (More > Copy location to clipboard). Now left click on the same point on the chart. As long as 'Show Calibration' is active a small red cross and a red circle will appear. If your calibration is correct the cross will be in the centre of the circle. If it is way out then consider re-calibrating the chart, maybe by choosing different points from the ones you chose before.  
+
+# Settings
+
+The settings file 'flightsim-charts.settings' stores a FramesPerSec value that is used to determine how often the window is updated. You can edit this setting and increase the value if you want smoother panning at the expense of increased GPU usage. Stop the program before changing the settings file.
 
 # Command Window
 

@@ -18,7 +18,6 @@ const char LabelFile[] = "images/label.png";
 const char MarkerFile[] = "images/marker.png";
 const char RingFile[] = "images/ring.png";
 const char ArrowFile[] = "images/arrow.png";
-const int DataRateFps = 6;
 const int MinScale = 40;
 const int MaxScale = 150;
 
@@ -281,6 +280,7 @@ void initVars()
     _settings.y = 100;
     _settings.width = 1200;
     _settings.height = 800;
+    _settings.framesPerSec = 0;
 
     _chartData.state = -1;
     _titleState = -2;
@@ -577,7 +577,7 @@ bool init()
     al_register_event_source(_eventQueue, al_get_mouse_event_source());
     al_register_event_source(_eventQueue, al_get_display_event_source(_display));
 
-    if (!(_timer = al_create_timer(1.0 / DataRateFps))) {
+    if (!(_timer = al_create_timer(1.0 / _settings.framesPerSec))) {
         printf("Failed to create timer\n");
         return false;
     }
@@ -1070,7 +1070,7 @@ void doRender()
         _winCheckDelay--;
     }
     else {
-        _winCheckDelay = DataRateFps;
+        _winCheckDelay = _settings.framesPerSec;
         RECT winPos;
         if (GetWindowRect(_displayWindow, &winPos)) {
             if (_settings.x != winPos.left || _settings.y != winPos.top)

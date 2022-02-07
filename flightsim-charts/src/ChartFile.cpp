@@ -14,6 +14,7 @@ extern int _displayHeight;
 extern ChartData _chartData;
 extern Settings _settings;
 
+
 /// <summary>
 /// Returns the full pathname of the settings file
 /// </summary>
@@ -69,6 +70,7 @@ void saveSettings()
 
     fprintf(outf, "%d,%d,%d,%d\n", _settings.x, _settings.y, _settings.width, _settings.height);
     fprintf(outf, "%s\n", _settings.chart);
+    fprintf(outf, "FramesPerSec = %d\n", _settings.framesPerSec);
     fclose(outf);
 }
 
@@ -86,34 +88,56 @@ void loadSettings()
         int width;
         int height;
 
-        while (fgets(line, 256, inf) && nextLine < 3) {
+        while (fgets(line, 256, inf) && nextLine < 4) {
             while (strlen(line) > 0 && (line[strlen(line) - 1] == ' '
                 || line[strlen(line) - 1] == '\r' || line[strlen(line) - 1] == '\n')) {
                 line[strlen(line) - 1] = '\0';
             }
 
-            if (strlen(line) > 0) {
-                if (nextLine == 1) {
-                    int items = sscanf(line, "%d,%d,%d,%d", &x, &y, &width, &height);
-                    if (items == 4) {
-                        _settings.x = x;
-                        _settings.y = y;
-                        _settings.width = width;
-                        _settings.height = height;
-                    }
-                }
-                else if (nextLine == 2) {
-                    strcpy(_settings.chart, line);
-                }
-
-                nextLine++;
+            if (strlen(line) == 0) {
+                continue;
             }
+
+            switch (nextLine) {
+            case 1:
+            {
+                int items = sscanf(line, "%d,%d,%d,%d", &x, &y, &width, &height);
+                if (items == 4) {
+                    _settings.x = x;
+                    _settings.y = y;
+                    _settings.width = width;
+                    _settings.height = height;
+                }
+                break;
+            }
+            case 2:
+            {
+                strcpy(_settings.chart, line);
+                break;
+            }
+            case 3:
+            {
+                char* sep = strchr(line, '=');
+                if (sep) {
+                    _settings.framesPerSec = atoi(sep + 1);
+                }
+                break;
+            }
+            }
+
+            nextLine++;
         }
 
         fclose(inf);
+
+        if (_settings.framesPerSec < 1) {
+            _settings.framesPerSec = DefaultFPS;
+            saveSettings();
+        }
     }
     else {
-        // No settings file so use default chart
+        // No settings file so use defaults
+        _settings.framesPerSec = DefaultFPS;
         GetModuleFileName(NULL, _settings.chart, 256);
 
         char* last = strrchr(_settings.chart, '\\');

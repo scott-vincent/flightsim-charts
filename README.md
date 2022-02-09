@@ -39,7 +39,7 @@ Any point can be checked using Little Navmap. Right click on the point in Little
 
 # Settings
 
-The settings file 'flightsim-charts.settings' stores a FramesPerSec value that is used to determine how often the window is updated. You can edit this setting and increase the value if you want smoother panning at the expense of increased GPU usage. Stop the program before changing the settings file.
+The settings file *flightsim-charts.settings* stores a FramesPerSec value that is used to determine how often the window is updated. You can edit this setting and increase the value if you want smoother panning at the expense of increased GPU usage. Stop the program before editing the settings file.
 
 # Command Window
 

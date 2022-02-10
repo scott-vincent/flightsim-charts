@@ -71,6 +71,7 @@ void saveSettings()
     fprintf(outf, "%d,%d,%d,%d\n", _settings.x, _settings.y, _settings.width, _settings.height);
     fprintf(outf, "%s\n", _settings.chart);
     fprintf(outf, "FramesPerSec = %d\n", _settings.framesPerSec);
+
     fclose(outf);
 }
 
@@ -248,6 +249,8 @@ void loadCalibrationData(ChartData* chartData, char* filename = NULL)
             }
         }
     }
+
+    fclose(inf);
 }
 
 /// <summary>

@@ -170,10 +170,16 @@ void showTitleMessage(const char* message)
 
 void cancelCalibration()
 {
-    // Calibration cancelled so revert to previous calibration if available
     _titleState = -2;
     _chartData.state = -1;
+
+    // Try to load previous calibration
     loadCalibrationData(&_chartData);
+
+    if (_chartData.state != 2) {
+        // Chart still needs calibrating
+        _chartData.state = -1;
+    }
 }
 
 void updateWindowTitle()

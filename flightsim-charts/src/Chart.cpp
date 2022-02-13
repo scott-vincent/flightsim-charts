@@ -1117,7 +1117,7 @@ void closestChart()
         return;
     }
 
-    CalibratedData* calib = (CalibratedData*)malloc(sizeof(calib) * MAX_CHARTS);
+    CalibratedData* calib = (CalibratedData*)malloc(sizeof(CalibratedData) * MAX_CHARTS);
 
     int count;
     findCalibratedCharts(calib, &count);

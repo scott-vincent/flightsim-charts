@@ -375,7 +375,7 @@ void getClipboardLocation(Location* loc)
 /// </summary>
 void findAllFiles(char *folder, CalibratedData* calib, int* count)
 {
-    char searchPath[256];
+    char searchPath[1024];
     sprintf(searchPath, "%s\\*", folder);
 
     WIN32_FIND_DATA fileData;
@@ -384,7 +384,7 @@ void findAllFiles(char *folder, CalibratedData* calib, int* count)
         return;
     }
 
-    char filePath[512];
+    char filePath[1024];
     do
     {
         if (*fileData.cFileName == '.') {

@@ -2,7 +2,7 @@
 #include <iostream>
 #include <thread>
 
-const char* versionString = "v1.2.3";
+const char* versionString = "v1.2.4";
 bool _quit = false;
 
 void server();

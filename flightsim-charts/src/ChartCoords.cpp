@@ -7,7 +7,7 @@ extern double DegreesToRadians;
 extern int _displayWidth;
 extern int _displayHeight;
 extern DrawData _chart;
-extern DrawData _zoomed;
+extern DrawData _view;
 extern LocData _aircraftLoc;
 extern MouseData _mouseData;
 extern ChartData _chartData;
@@ -17,8 +17,8 @@ extern ChartData _chartData;
 /// </summary>
 void getDisplayPos(Position* display)
 {
-    display->x = _mouseData.dragX + _chart.x * _zoomed.scale - _displayWidth / 2;
-    display->y = _mouseData.dragY + _chart.y * _zoomed.scale - _displayHeight / 2;
+    display->x = _mouseData.dragX + _chart.x * _view.scale - _displayWidth / 2;
+    display->y = _mouseData.dragY + _chart.y * _view.scale - _displayHeight / 2;
 }
 
 /// <summary>
@@ -32,8 +32,8 @@ void displayToChartPos(int displayX, int displayY, Position* chart)
     int zoomedX = displayPos.x + displayX;
     int zoomedY = displayPos.y + displayY;
 
-    chart->x = zoomedX / _zoomed.scale;
-    chart->y = zoomedY / _zoomed.scale;
+    chart->x = zoomedX / _view.scale;
+    chart->y = zoomedY / _view.scale;
 }
 
 /// <summary>
@@ -45,8 +45,8 @@ void chartToDisplayPos(int chartX, int chartY, Position* display)
     Position displayPos;
     getDisplayPos(&displayPos);
 
-    display->x = chartX * _zoomed.scale - displayPos.x;
-    display->y = chartY * _zoomed.scale - displayPos.y;
+    display->x = chartX * _view.scale - displayPos.x;
+    display->y = chartY * _view.scale - displayPos.y;
 }
 
 /// <summary>
@@ -167,7 +167,7 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
     displayToChartPos(_displayWidth - 1, _displayHeight - 1, &displayPos2);
 
     // Shrink the display slightly to add a border
-    double border = 15.0 / _zoomed.scale;
+    double border = 15.0 / _view.scale;
     displayPos1.x += border;
     displayPos1.y += border;
     displayPos2.x -= border;
@@ -185,8 +185,8 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
 
     // Draw a line from centre of display to aircraft and see
     // where the line intersects a display edge.
-    int centreX = _chart.x + _mouseData.dragX / _zoomed.scale;
-    int centreY = _chart.y + _mouseData.dragY / _zoomed.scale;
+    int centreX = _chart.x + _mouseData.dragX / _view.scale;
+    int centreY = _chart.y + _mouseData.dragY / _view.scale;
     bool intersected = false;
 
     if (pos.x < displayPos1.x) {

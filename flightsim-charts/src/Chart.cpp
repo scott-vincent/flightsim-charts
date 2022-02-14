@@ -42,7 +42,7 @@ int _displayHeight;
 HWND _displayWindow;
 int _winCheckDelay = 0;
 DrawData _chart;
-DrawData _zoomed;
+DrawData _view;
 AircraftDrawData _aircraft;
 DrawData _aircraftLabel;
 ALLEGRO_BITMAP* _aircraftLabelBmpCopy;
@@ -260,7 +260,7 @@ void updateWindowTitle()
 void initVars()
 {
     _chart.bmp = NULL;
-    _zoomed.bmp = NULL;
+    _view.bmp = NULL;
     _aircraft.bmp = NULL;
     _aircraft.smallBmp = NULL;
     _aircraft.otherBmp = NULL;
@@ -611,7 +611,7 @@ void cleanupBitmap(ALLEGRO_BITMAP* bmp)
 void cleanup()
 {
     cleanupBitmap(_chart.bmp);
-    cleanupBitmap(_zoomed.bmp);
+    cleanupBitmap(_view.bmp);
     cleanupBitmap(_aircraft.bmp);
     cleanupBitmap(_aircraft.smallBmp);
     cleanupBitmap(_aircraft.otherBmp);
@@ -682,7 +682,7 @@ void resetMap()
 
     al_get_mouse_state(&_mouse);
     _mouseStartZ = -(_mouse.z + 999);
-    _zoomed.scale = 0;
+    _view.scale = 0;
 }
 
 bool initChart()
@@ -693,9 +693,6 @@ bool initChart()
 
     cleanupBitmap(_chart.bmp);
     _chart.bmp = NULL;
-
-    cleanupBitmap(_zoomed.bmp);
-    _zoomed.bmp = NULL;
 
     _chart.bmp = al_load_bitmap(_settings.chart);
     if (!_chart.bmp) {
@@ -716,22 +713,6 @@ bool initChart()
     loadCalibrationData(&_chartData);
 
     return true;
-}
-
-void initZoomedChart()
-{
-    if (*_settings.chart == '\0') {
-        return;
-    }
-
-    _zoomed.width = _chart.width * _zoomed.scale;
-    _zoomed.height = _chart.height * _zoomed.scale;
-
-    _zoomed.bmp = al_create_bitmap(_zoomed.width, _zoomed.height);
-    al_set_target_bitmap(_zoomed.bmp);
-    al_draw_scaled_bitmap(_chart.bmp, 0, 0, _chart.width, _chart.height, 0, 0, _zoomed.width, _zoomed.height, 0);
-
-    al_set_target_backbuffer(_display);
 }
 
 bool initAircraft()
@@ -883,7 +864,7 @@ void drawOwnAircraft()
         halfHeight = _aircraft.smallHalfHeight;
     }
 
-    if (_zoomed.scale > 0.2) {
+    if (_view.scale > 0.2) {
         _aircraft.scale = 0.2;
     }
     else {
@@ -926,13 +907,13 @@ void drawOtherAircraft()
     displayToChartPos(_displayWidth - 1, _displayHeight - 1, &displayPos2);
 
     // Expand the display slightly so aircraft can be drawn partly off the edge
-    double border = 15.0 / _zoomed.scale;
+    double border = 15.0 / _view.scale;
     displayPos1.x -= border;
     displayPos1.y -= border;
     displayPos2.x += border;
     displayPos2.y += border;
 
-    if (_zoomed.scale > 0.2) {
+    if (_view.scale > 0.2) {
         _aircraft.scale = 0.2;
     }
     else {
@@ -980,9 +961,7 @@ void render()
     }
 
     // Draw chart
-    int destX = _mouseData.dragX + _chart.x * _zoomed.scale - _displayWidth / 2;
-    int destY = _mouseData.dragY + _chart.y * _zoomed.scale - _displayHeight / 2;
-    al_draw_bitmap_region(_zoomed.bmp, destX, destY, _displayWidth, _displayHeight, 0, 0, 0);
+    al_draw_scaled_bitmap(_chart.bmp, _view.x, _view.y, _view.width, _view.height, 0, 0, _displayWidth, _displayHeight, 0);
 
     // Draw aircraft
     drawOwnAircraft();
@@ -991,13 +970,16 @@ void render()
     drawOtherAircraft();
 
     // Draw first marker or both if a message is being displayed
+    int destX = _mouseData.dragX + _chart.x * _view.scale - _displayWidth / 2;
+    int destY = _mouseData.dragY + _chart.y * _view.scale - _displayHeight / 2;
+
     if (_chartData.state == 1 || (_chartData.state == 2 && (_titleState == -9 || _showCalibration))) {
         int width = _marker.width * _marker.scale;
         int height = _marker.height * _marker.scale;
 
         for (int i = 0; i < _chartData.state; i++) {
-            int x = _chartData.x[i] * _zoomed.scale - destX;
-            int y = _chartData.y[i] * _zoomed.scale - destY;
+            int x = _chartData.x[i] * _view.scale - destX;
+            int y = _chartData.y[i] * _view.scale - destY;
             al_draw_scaled_bitmap(_marker.bmp, 0, 0, _marker.width, _marker.height, x - width / 2, y - height / 2, width, height, 0);
         }
     }
@@ -1009,8 +991,8 @@ void render()
             int width = _marker.width * _marker.scale / 2.0;
             int height = _marker.height * _marker.scale / 2.0;
 
-            int x = _clickedPos.x * _zoomed.scale - destX;
-            int y = _clickedPos.y * _zoomed.scale - destY;
+            int x = _clickedPos.x * _view.scale - destX;
+            int y = _clickedPos.y * _view.scale - destY;
             al_draw_scaled_bitmap(_marker.bmp, 0, 0, _marker.width, _marker.height, x - width / 2, y - height / 2, width, height, 0);
         }
 
@@ -1019,8 +1001,8 @@ void render()
             int width = _ring.width * _ring.scale;
             int height = _ring.height * _ring.scale;
 
-            int x = _clipboardPos.x * _zoomed.scale - destX;
-            int y = _clipboardPos.y * _zoomed.scale - destY;
+            int x = _clipboardPos.x * _view.scale - destX;
+            int y = _clipboardPos.y * _view.scale - destY;
             al_draw_scaled_bitmap(_ring.bmp, 0, 0, _ring.width, _ring.height, x - width / 2, y - height / 2, width, height, 0);
         }
     }
@@ -1329,16 +1311,15 @@ void doUpdate()
 
     // Want zoom to be exponential
     double zoomScale = _chart.scale * _chart.scale / 10000.0;
-    if (_zoomed.scale != zoomScale) {
-        _zoomed.scale = zoomScale;
-
-        cleanupBitmap(_zoomed.bmp);
-        _zoomed.bmp = NULL;
+    if (_view.scale != zoomScale) {
+        _view.scale = zoomScale;
     }
 
-    if (_zoomed.bmp == NULL) {
-        initZoomedChart();
-    }
+    // Calculate view, i.e. part of chart that is visible
+    _view.x = _chart.x + (_mouseData.dragX - _displayWidth / 2.0) / _view.scale;
+    _view.y = _chart.y + (_mouseData.dragY - _displayHeight / 2.0) / _view.scale;
+    _view.width = _displayWidth / _view.scale;
+    _view.height = _displayHeight / _view.scale;
 
     updateOwnAircraft();
     updateWind();
@@ -1403,8 +1384,8 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
             // Left mouse button released
             if (_mouseData.dragging) {
                 _mouseData.dragging = false;
-                _chart.x += _mouseData.dragX / _zoomed.scale;
-                _chart.y += _mouseData.dragY / _zoomed.scale;
+                _chart.x += _mouseData.dragX / _view.scale;
+                _chart.y += _mouseData.dragY / _view.scale;
                 _mouseData.dragX = 0;
                 _mouseData.dragY = 0;
             }

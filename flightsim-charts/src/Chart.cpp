@@ -709,7 +709,8 @@ bool initChart()
     // Centre map and zoom fully out
     resetMap();
 
-    _titleState = -1;
+    _titleState = -2;
+    _chartData.state = -1;
     loadCalibrationData(&_chartData);
 
     return true;

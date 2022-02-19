@@ -30,6 +30,7 @@ extern int _aircraftOtherCount;
 extern int _locDataSize;
 extern TeleportData _teleport;
 extern SnapshotData _snapshot;
+extern int _range;
 
 // Variables
 double DegreesToRadians = ALLEGRO_PI / 180.0f;
@@ -67,6 +68,7 @@ int _drawDataSize = sizeof(DrawData);
 int _mouseStartZ = 0;
 int _titleState;
 int _titleDelay;
+bool _maxRange = false;
 bool _showTags = true;
 bool _showCalibration = false;
 Location _clickedLoc;
@@ -91,6 +93,7 @@ enum MENU_ITEMS {
     MENU_TELEPORT_CLIPBOARD,
     MENU_TELEPORT_RESTORE_LOCATION,
     MENU_TELEPORT_SAVE_LOCATION,
+    MENU_MAX_RANGE,
     MENU_SHOW_TAGS,
     MENU_SHOW_CALIBRATION,
     MENU_RECALIBRATE
@@ -334,9 +337,11 @@ void updateMenu()
     EnableMenuItem(_menu, MENU_TELEPORT_CLIPBOARD, enabledState(active && !_teleport.inProgress));
     EnableMenuItem(_menu, MENU_TELEPORT_RESTORE_LOCATION, enabledState(active && !_snapshot.save && _snapshot.loc.lat != MAXINT));
     EnableMenuItem(_menu, MENU_TELEPORT_SAVE_LOCATION, enabledState(active && !_snapshot.save));
+    EnableMenuItem(_menu, MENU_MAX_RANGE, enabledState(active && calibrated));
     EnableMenuItem(_menu, MENU_SHOW_TAGS, enabledState(calibrated));
     EnableMenuItem(_menu, MENU_SHOW_CALIBRATION, enabledState(calibrated));
 
+    CheckMenuItem(_menu, MENU_MAX_RANGE, checkedState(_maxRange));
     CheckMenuItem(_menu, MENU_SHOW_TAGS, checkedState(_showTags));
     CheckMenuItem(_menu, MENU_SHOW_CALIBRATION, checkedState(_showCalibration));
 }
@@ -444,6 +449,11 @@ void actionMenuItem()
         _snapshot.save = true;
         break;
 
+    case MENU_MAX_RANGE:
+        _maxRange = !_maxRange;
+        _range = _maxRange ? MAX_RANGE : AIRCRAFT_RANGE;
+        break;
+
     case MENU_SHOW_TAGS:
         _showTags = !_showTags;
         break;
@@ -481,6 +491,7 @@ bool initMenu()
     AppendMenu(_menu, MF_STRING, MENU_ROTATE_AGAIN, "Rotate again");
     AppendMenu(_menu, MF_STRING | MF_POPUP, (UINT_PTR)rotateMenu, "Rotate aircraft");
     AppendMenu(_menu, MF_STRING | MF_POPUP, (UINT_PTR)teleportMenu, "Teleport aircraft");
+    AppendMenu(_menu, MF_STRING, MENU_MAX_RANGE, "Maximum Range");
     AppendMenu(_menu, MF_STRING, MENU_SHOW_TAGS, "Show tags");
     AppendMenu(_menu, MF_STRING, MENU_SHOW_CALIBRATION, "Show calibration");
     AppendMenu(_menu, MF_SEPARATOR, 0, NULL);

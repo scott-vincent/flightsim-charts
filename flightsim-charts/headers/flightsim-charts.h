@@ -5,7 +5,8 @@
 // Constants
 const int MAX_AIRCRAFT = 150;
 const int MAX_CHARTS = 1000;
-const int AIRCRAFT_RANGE = 15000;   // metres
+const int AIRCRAFT_RANGE = 40000;   // metres
+const int MAX_RANGE = 200000;       // metres
 const int WINGSPAN_SMALL = 60;      // feet
 const char DefaultChart[] = "Airport Charts\\EG\\LL\\EGLL Heathrow.png";
 const int DefaultFPS = 8;

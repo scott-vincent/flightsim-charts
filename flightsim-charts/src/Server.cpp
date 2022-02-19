@@ -33,6 +33,7 @@ bool _pendingRequest = false;
 HANDLE hSimConnect = NULL;
 bool _connected = false;
 bool _shownMaxExceeded = false;
+int _range = AIRCRAFT_RANGE;
 TeleportData _teleport;
 SnapshotData _snapshot;
 
@@ -87,7 +88,7 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
             }
             else if (!_pendingRequest) {
                 // Request data of aircraft within range
-                if (SimConnect_RequestDataOnSimObjectType(hSimConnect, REQ_ALL, DEF_ALL, AIRCRAFT_RANGE, SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT) != 0) {
+                if (SimConnect_RequestDataOnSimObjectType(hSimConnect, REQ_ALL, DEF_ALL, _range, SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT) != 0) {
                     printf("Failed to request all aircraft data\n");
                 }
                 else {

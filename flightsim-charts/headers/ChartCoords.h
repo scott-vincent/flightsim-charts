@@ -11,9 +11,11 @@ struct AircraftPosition {
 
 void displayToChartPos(int x, int y, Position* pos);
 void chartToDisplayPos(int x, int y, Position* pos);
-void locationToChartPos(double lat, double lon, Position* pos);
+void locationToChartPos(Location* loc, Position* pos);
 void chartPosToLocation(int x, int y, Location* loc);
 void locationToString(Location* loc, char* str);
+double greatCircleDistance(Location* loc1, Location* loc2);
 void aircraftLocToChartPos(AircraftPosition* pos);
-bool drawOtherAircraft(Position* displayPos1, Position* displayPos2, LocData* loc, Position* pos);
-CalibratedData* findClosestChart(CalibratedData* calib, int count, LocData* loc);
+bool drawOtherAircraft(Position* displayPos1, Position* displayPos2, Location* loc, Position* pos);
+CalibratedData* findClosestChart(CalibratedData* calib, int count, Location* loc);
+void adjustFollowLocation(LocData* loc, double ownWingSpan);

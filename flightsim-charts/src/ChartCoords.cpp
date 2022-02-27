@@ -1,6 +1,10 @@
 #include <windows.h>
 #include <iostream>
+#define _USE_MATH_DEFINES
+#include <math.h>
 #include "ChartCoords.h"
+
+const double RadiusOfEarthNm = 3440.1;
 
 // Externals
 extern double DegreesToRadians;
@@ -8,7 +12,7 @@ extern int _displayWidth;
 extern int _displayHeight;
 extern DrawData _chart;
 extern DrawData _view;
-extern LocData _aircraftLoc;
+extern LocData _aircraftData;
 extern MouseData _mouseData;
 extern ChartData _chartData;
 
@@ -52,14 +56,14 @@ void chartToDisplayPos(int chartX, int chartY, Position* display)
 /// <summary>
 /// Convert location to chart position. Chart must be calibrated.
 /// </summary>
-void locationToChartPos(double lat, double lon, Position* pos)
+void locationToChartPos(Location* loc, Position* pos)
 {
     double lonCalibDiff = _chartData.lon[1] - _chartData.lon[0];
-    double lonDiff = lon - _chartData.lon[0];
+    double lonDiff = loc->lon - _chartData.lon[0];
     double xScale = lonDiff / lonCalibDiff;
 
     double latCalibDiff = _chartData.lat[1] - _chartData.lat[0];
-    double latDiff = lat - _chartData.lat[0];
+    double latDiff = loc->lat - _chartData.lat[0];
     double yScale = latDiff / latCalibDiff;
 
     int xCalibDiff = _chartData.x[1] - _chartData.x[0];
@@ -131,14 +135,12 @@ void locationToString(Location* loc, char* str)
 /// Returns the distance in nautical miles.
 /// </summary>
 /// <returns></returns>
-double greatCircleDistance(Location loc1, double lat2, double lon2)
+double greatCircleDistance(Location* loc1, Location* loc2)
 {
-    const double RadiusOfEarthNm = 3440.1;
-
-    double lat1r = loc1.lat * DegreesToRadians;
-    double lon1r = loc1.lon * DegreesToRadians;
-    double lat2r = lat2 * DegreesToRadians;
-    double lon2r = lon2 * DegreesToRadians;
+    double lat1r = loc1->lat * DegreesToRadians;
+    double lon1r = loc1->lon * DegreesToRadians;
+    double lat2r = loc2->lat * DegreesToRadians;
+    double lon2r = loc2->lon * DegreesToRadians;
 
     double latDiff = lat1r - lat2r;
     double lonDiff = lon1r - lon2r;
@@ -151,6 +153,24 @@ double greatCircleDistance(Location loc1, double lat2, double lon2)
 }
 
 /// <summary>
+/// Calculate coordinates of new point given starting
+/// point, distance and heading.
+/// </summary>
+void greatCirclePos(Location* loc, double headingTrue, double distanceNm)
+{
+    double lat1r = loc->lat * DegreesToRadians;
+    double lon1r = loc->lon * DegreesToRadians;
+    double hdgr = headingTrue * DegreesToRadians;
+    double nmr = distanceNm / RadiusOfEarthNm;
+
+    double lat2r = asin(sin(lat1r) * cos(nmr) + cos(lat1r) * sin(nmr) * cos(hdgr));
+    double lon2r = lon1r + atan2(sin(hdgr) * sin(nmr) * cos(lat1r), cos(nmr) - sin(lat1r) * sin(lat2r));
+
+    loc->lat = lat2r * 180.0 / M_PI;
+    loc->lon = lon2r * 180.0 / M_PI;
+}
+
+/// <summary>
 /// Convert aircraft location to aircraft chart position.
 /// If aircraft is outside the display, bring it back on at the
 /// nearest edge and indicate how many nm away the aircraft is.
@@ -158,7 +178,7 @@ double greatCircleDistance(Location loc1, double lat2, double lon2)
 void aircraftLocToChartPos(AircraftPosition* adjustedPos)
 {
     Position pos;
-    locationToChartPos(_aircraftLoc.lat, _aircraftLoc.lon, &pos);
+    locationToChartPos(&_aircraftData.loc, &pos);
 
     Position displayPos1;
     displayToChartPos(0, 0, &displayPos1);
@@ -250,7 +270,7 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
     // Calculate how far off the display the aircraft is in nm.
     Location intersectLoc;
     chartPosToLocation(adjustedPos->x, adjustedPos->y, &intersectLoc);
-    double distance = greatCircleDistance(intersectLoc, _aircraftLoc.lat, _aircraftLoc.lon);
+    double distance = greatCircleDistance(&intersectLoc, &_aircraftData.loc);
 
     if (distance >= 1) {
         int distanceX1 = distance + 0.5;
@@ -268,10 +288,10 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
     }
 }
 
-bool drawOtherAircraft(Position* displayPos1, Position* displayPos2, LocData* loc, Position* pos)
+bool drawOtherAircraft(Position* displayPos1, Position* displayPos2, Location* loc, Position* pos)
 {
     Position chartPos;
-    locationToChartPos(loc->lat, loc->lon, &chartPos);
+    locationToChartPos(loc, &chartPos);
 
     if (chartPos.x < displayPos1->x || chartPos.x > displayPos2->x
         || chartPos.y < displayPos1->y || chartPos.y > displayPos2->y)
@@ -284,7 +304,7 @@ bool drawOtherAircraft(Position* displayPos1, Position* displayPos2, LocData* lo
     return true;
 }
 
-CalibratedData* findClosestChart(CalibratedData* calib, int count, LocData* loc)
+CalibratedData* findClosestChart(CalibratedData* calib, int count, Location* loc)
 {
     CalibratedData* closest = calib;
     double minDistance = MAXINT;
@@ -299,7 +319,7 @@ CalibratedData* findClosestChart(CalibratedData* calib, int count, LocData* loc)
             centre.lat = (nextCalib->data.lat[0] + nextCalib->data.lat[1]) / 2.0;
             centre.lon = (nextCalib->data.lon[0] + nextCalib->data.lon[1]) / 2.0;
 
-            double distance = greatCircleDistance(centre, loc->lat, loc-> lon);
+            double distance = greatCircleDistance(&centre, loc);
 
             if (distance < minDistance) {
                 closest = nextCalib;
@@ -309,4 +329,28 @@ CalibratedData* findClosestChart(CalibratedData* calib, int count, LocData* loc)
     }
 
     return closest;
+}
+
+/// <summary>
+/// Want a good view from the cockpit so move own
+/// airaft slightly in front of followed aircraft.
+/// </summary>
+void adjustFollowLocation(LocData* locData, double ownWingSpan)
+{
+    // Move own aircraft slightly in front. Needs to be
+    // further in front if following a larger aircraft.
+    double feet = 25.0 + 25.0 * ((locData->wingSpan / ownWingSpan) - 1);
+
+    // Need to be even further in front at higher speeds
+    // as there will be more lag.
+    if (locData->speed > 40) {
+        feet *= 1 + (locData->speed - 40.0) / 500;
+    }
+
+    // Followed aircraft always seems to be a little higher
+    // than own aircraft so reduce altitude a bit.
+    locData->alt -= 3;
+
+    double nm = feet / 6076.12;
+    greatCirclePos(&locData->loc, locData->heading, nm);
 }

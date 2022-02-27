@@ -2,6 +2,7 @@
 #include <iostream>
 #include <thread>
 #include "flightsim-charts.h"
+#include "ChartCoords.h"
 #include "simconnect.h"
 
 enum DEFINITION_ID {
@@ -23,12 +24,14 @@ extern bool _quit;
 // Variables
 LocData _locData;
 WindData _windData;
-LocData _aircraftLoc;
-LocData _aircraftOtherLoc[MAX_AIRCRAFT];
-LocData _newAircraftOtherLoc[MAX_AIRCRAFT];
-int _aircraftOtherCount = 0;
+LocData _aircraftData;
+OtherData _otherData;
+OtherData _otherAircraftData[MAX_AIRCRAFT];
+OtherData _newOtherAircraftData[MAX_AIRCRAFT];
+int _otherAircraftCount = 0;
 int _locDataSize = sizeof(LocData);
 int _windDataSize = sizeof(WindData);
+int _otherDataSize = sizeof(OtherData);
 bool _pendingRequest = false;
 HANDLE hSimConnect = NULL;
 bool _connected = false;
@@ -36,7 +39,26 @@ bool _shownMaxExceeded = false;
 int _range = AIRCRAFT_RANGE;
 TeleportData _teleport;
 SnapshotData _snapshot;
+FollowData _follow;
 
+
+void stopFollowing(bool force = false)
+{
+    if (!force && *_follow.callsign == '\0') {
+        return;
+    }
+
+    if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, _follow.aircraftId, SIMCONNECT_PERIOD_NEVER, 0, 0, 0, 0) != 0) {
+        printf("Failed to stop requesting followed aircraft data\n");
+    }
+
+    if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_VISUAL_FRAME, 0, 0, 0, 0) != 0) {
+        printf("Failed to start requesting own aircraft data\n");
+    }
+
+    *_follow.callsign = '\0';
+    _follow.inProgress = false;
+}
 
 void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContext)
 {
@@ -52,7 +74,7 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
         {
             int dataSize = pObjData->dwSize - ((int)(&pObjData->dwData) - (int)pData);
             if (dataSize != _locDataSize + _windDataSize) {
-                printf("Error: SimConnect expected %d bytes but received %d bytes\n", _locDataSize + _windDataSize, dataSize);
+                printf("Error: SimConnect self expected %d bytes but received %d bytes\n", _locDataSize + _windDataSize, dataSize);
                 return;
             }
 
@@ -60,16 +82,26 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
             memcpy(&_windData, (char*)&pObjData->dwData + _locDataSize, _windDataSize);
 
             // Check for fake data that FS2020 sends before you have selected an airport
-            if (_locData.lat > -0.02 && _locData.lat < 0.02 && _locData.lon > -0.02 && _locData.lon < 0.02 && (_locData.heading > 359.9 || _locData.heading < 0.1)) {
-                _aircraftLoc.lat = MAXINT;
+            if (_locData.loc.lat > -0.02 && _locData.loc.lat < 0.02 && _locData.loc.lon > -0.02 && _locData.loc.lon < 0.02 && (_locData.heading > 359.9 || _locData.heading < 0.1)) {
+                _aircraftData.loc.lat = MAXINT;
             }
             else {
-                memcpy(&_aircraftLoc, &_locData, _locDataSize);
+                memcpy(&_aircraftData, &_locData, _locDataSize);
             }
 
             if (_teleport.inProgress) {
-                if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_TELEPORT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _teleport.dataSize, &_teleport) != 0) {
-                    printf("Failed to teleport aircraft\n");
+                stopFollowing();
+                if (_teleport.toGround) {
+                    // Include alt and speed
+                    if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_SNAPSHOT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _snapshot.dataSize, &_teleport) != 0) {
+                        printf("Failed to teleport aircraft\n");
+                    }
+                }
+                else {
+                    // Don't include alt and speed (want them to stay the same)
+                    if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_TELEPORT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _teleport.dataSize, &_teleport) != 0) {
+                        printf("Failed to teleport aircraft\n");
+                    }
                 }
                 _teleport.inProgress = false;
             }
@@ -81,18 +113,22 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
                 // Save not complete until data received
             }
             else if (_snapshot.restore) {
+                stopFollowing();
                 if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_SNAPSHOT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _snapshot.dataSize, &_snapshot) != 0) {
                     printf("Failed to restore snapshot data\n");
                 }
                 _snapshot.restore = false;
             }
-            else if (!_pendingRequest) {
-                // Request data of aircraft within range
-                if (SimConnect_RequestDataOnSimObjectType(hSimConnect, REQ_ALL, DEF_ALL, _range, SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT) != 0) {
-                    printf("Failed to request all aircraft data\n");
-                }
-                else {
-                    _pendingRequest = true;
+            else if (_follow.inProgress && *_follow.callsign == '\0') {
+                stopFollowing(true);
+            }
+
+            if (!_follow.inProgress && *_follow.callsign != '\0') {
+                // Apply followed aircraft data to own aircraft.
+                // Need to make adjustments so we get a good cockpit view.
+                adjustFollowLocation(&_locData, _follow.ownWingSpan);
+                if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_SNAPSHOT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _snapshot.dataSize, &_locData) != 0) {
+                    printf("Failed to apply follow data\n");
                 }
             }
 
@@ -103,7 +139,7 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
         {
             int dataSize = pObjData->dwSize - ((int)(&pObjData->dwData) - (int)pData);
             if (dataSize != _snapshot.dataSize) {
-                printf("Error: SimConnect expected %d bytes but received %d bytes\n", _snapshot.dataSize, dataSize);
+                printf("Error: SimConnect snapshot expected %d bytes but received %d bytes\n", _snapshot.dataSize, dataSize);
                 return;
             }
 
@@ -130,17 +166,34 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
         case REQ_ALL:
         {
             int dataSize = pObjData->dwSize - ((int)(&pObjData->dwData) - (int)pData);
-            if (dataSize != _locDataSize) {
-                printf("Error: SimConnect expected %d bytes but received %d bytes\n", _locDataSize, dataSize);
+            if (dataSize != _otherDataSize) {
+                printf("Error: SimConnect other expected %d bytes but received %d bytes\n", _otherDataSize, dataSize);
+                _pendingRequest = false;
                 return;
             }
 
-            memcpy(&_locData, &pObjData->dwData, _locDataSize);
+            memcpy(&_otherData, &pObjData->dwData, _otherDataSize);
             int i = pObjData->dwentrynumber - 1;
+
+            // Make sure followed aircraft still exists
+            if (*_follow.callsign != '\0' && strcmp(_otherData.callsign, _follow.callsign) == 0) {
+                _follow.aircraftId = pObjData->dwObjectID;
+            }
+
+            if (_follow.inProgress && *_follow.callsign != '\0' && strcmp(_otherData.callsign, _follow.callsign) == 0) {
+                // Start following
+                if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_NEVER, 0, 0, 0, 0) != 0) {
+                    printf("Failed to stop requesting own aircraft data\n");
+                }
+                if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, _follow.aircraftId, SIMCONNECT_PERIOD_VISUAL_FRAME, 0, 0, 0, 0) != 0) {
+                    printf("Failed to start requesting followed aircraft data\n");
+                }
+                _follow.inProgress = false;
+            }
 
             if (i < MAX_AIRCRAFT) {
                 //printf("%d: %s - lat: %f  lon: %f  heading:%f  wingSpan: %f\n", i, _locData.callsign, _locData.lat, _locData.lon, _locData.heading, _locData.wingSpan);
-                memcpy(&_newAircraftOtherLoc[i], &_locData, _locDataSize);
+                memcpy(&_newOtherAircraftData[i], &_otherData, _otherDataSize);
             }
             else if (!_shownMaxExceeded) {
                 _shownMaxExceeded = true;
@@ -155,9 +208,14 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
                     count = MAX_AIRCRAFT;
                 }
 
+                // If followed aircraft has disappeared, stop following it
+                if (*_follow.callsign != '\0' && _follow.aircraftId == MAXINT) {
+                    stopFollowing();
+                }
+
                 // Overwrite old locations with new locations
-                memcpy(&_aircraftOtherLoc, &_newAircraftOtherLoc, _locDataSize * count);
-                _aircraftOtherCount = count;
+                memcpy(&_otherAircraftData, &_newOtherAircraftData, _otherDataSize * count);
+                _otherAircraftCount = count;
                 _pendingRequest = false;
             }
 
@@ -183,6 +241,21 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
     }
 }
 
+void GetAllAircract() {
+    if (_pendingRequest || _aircraftData.loc.lat == MAXINT) {
+        return;
+    }
+
+    // Request data of aircraft within range
+    if (SimConnect_RequestDataOnSimObjectType(hSimConnect, REQ_ALL, DEF_ALL, _range, SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT) != 0) {
+        printf("Failed to request all aircraft data\n");
+        return;
+    }
+
+    _follow.aircraftId = MAXINT;
+    _pendingRequest = true;
+}
+
 void addDataDef(SIMCONNECT_DATA_DEFINITION_ID defId, const char *var, const char *units)
 {
     HRESULT result;
@@ -201,10 +274,33 @@ void addDataDef(SIMCONNECT_DATA_DEFINITION_ID defId, const char *var, const char
 
 void init()
 {
-    // SimConnect variables
+    addDataDef(DEF_TELEPORT, "Plane Latitude", "Degrees");
+    addDataDef(DEF_TELEPORT, "Plane Longitude", "Degrees");
+    addDataDef(DEF_TELEPORT, "Plane Heading Degrees True", "Degrees");
+    addDataDef(DEF_TELEPORT, "Plane Bank Degrees", "Degrees");
+    addDataDef(DEF_TELEPORT, "Plane Pitch Degrees", "Degrees");
+    _teleport.dataSize = 5 * sizeof(double);
+
+    // First part of SNAPSHOT must match teleport
+    addDataDef(DEF_SNAPSHOT, "Plane Latitude", "Degrees");
+    addDataDef(DEF_SNAPSHOT, "Plane Longitude", "Degrees");
+    addDataDef(DEF_SNAPSHOT, "Plane Heading Degrees True", "Degrees");
+    addDataDef(DEF_SNAPSHOT, "Plane Bank Degrees", "Degrees");
+    addDataDef(DEF_SNAPSHOT, "Plane Pitch Degrees", "Degrees");
+    // Rest of SNAPSHOT data after teleport
+    addDataDef(DEF_SNAPSHOT, "Plane Alt Above Ground", "Feet");
+    addDataDef(DEF_SNAPSHOT, "Airspeed Indicated", "Knots");
+    _snapshot.dataSize = 7 * sizeof(double);
+
+    // First part of SELF must match snapshot
     addDataDef(DEF_SELF, "Plane Latitude", "Degrees");
     addDataDef(DEF_SELF, "Plane Longitude", "Degrees");
     addDataDef(DEF_SELF, "Plane Heading Degrees True", "Degrees");
+    addDataDef(DEF_SELF, "Plane Bank Degrees", "Degrees");
+    addDataDef(DEF_SELF, "Plane Pitch Degrees", "Degrees");
+    addDataDef(DEF_SELF, "Plane Alt Above Ground", "Feet");
+    addDataDef(DEF_SELF, "Airspeed Indicated", "Knots");
+    // Rest of SELF data after snapshot
     addDataDef(DEF_SELF, "Wing Span", "Feet");
     addDataDef(DEF_SELF, "Atc Id", "string");
     addDataDef(DEF_SELF, "Atc Model", "string");
@@ -218,25 +314,11 @@ void init()
     addDataDef(DEF_ALL, "Atc Id", "string");
     addDataDef(DEF_ALL, "Atc Model", "string");
 
-    addDataDef(DEF_TELEPORT, "Plane Latitude", "Degrees");
-    addDataDef(DEF_TELEPORT, "Plane Longitude", "Degrees");
-    addDataDef(DEF_TELEPORT, "Plane Heading Degrees True", "Degrees");
-    addDataDef(DEF_TELEPORT, "Plane Bank Degrees", "Degrees");
-    addDataDef(DEF_TELEPORT, "Plane Pitch Degrees", "Degrees");
-    _teleport.dataSize = 5 * sizeof(double);
-
     // Constant teleport values
     _teleport.bank = 0;
     _teleport.pitch = 0;
-
-    addDataDef(DEF_SNAPSHOT, "Plane Latitude", "Degrees");
-    addDataDef(DEF_SNAPSHOT, "Plane Longitude", "Degrees");
-    addDataDef(DEF_SNAPSHOT, "Plane Heading Degrees True", "Degrees");
-    addDataDef(DEF_SNAPSHOT, "Plane Bank Degrees", "Degrees");
-    addDataDef(DEF_SNAPSHOT, "Plane Pitch Degrees", "Degrees");
-    addDataDef(DEF_SNAPSHOT, "Plane Altitude", "Feet");
-    addDataDef(DEF_SNAPSHOT, "Airspeed Indicated", "Knots");
-    _snapshot.dataSize = 7 * sizeof(double);
+    _teleport.alt = 6;
+    _teleport.speed = 0;
 
     // Start requesting data for our aircraft
     if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_VISUAL_FRAME, 0, 0, 0, 0) != 0) {
@@ -247,8 +329,15 @@ void init()
 void cleanUp()
 {
     if (hSimConnect) {
-        if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_NEVER, 0, 0, 0, 0) != 0) {
-            printf("Failed to stop requesting data\n");
+        if (*_follow.callsign != '\0') {
+            if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, _follow.aircraftId, SIMCONNECT_PERIOD_NEVER, 0, 0, 0, 0) != 0) {
+                printf("Failed to stop requesting followed aircraft data\n");
+            }
+        }
+        else {
+            if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SELF, DEF_SELF, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_NEVER, 0, 0, 0, 0) != 0) {
+                printf("Failed to stop requesting data\n");
+            }
         }
 
         printf("Disconnecting from MS FS2020\n");
@@ -269,12 +358,14 @@ void server()
 
     printf(WaitMsg);
     _connected = false;
-    _aircraftLoc.lat = MAXINT;
-    _aircraftOtherCount = 0;
+    _aircraftData.loc.lat = MAXINT;
+    _otherAircraftCount = 0;
     _teleport.inProgress = false;
     _snapshot.loc.lat = MAXINT;
     _snapshot.save = false;
     _snapshot.restore = false;
+    *_follow.callsign = '\0';
+    _follow.inProgress = false;
 
     HRESULT result;
 
@@ -284,11 +375,16 @@ void server()
     {
         if (_connected) {
             result = SimConnect_CallDispatch(hSimConnect, MyDispatchProc, NULL);
-            if (result != 0) {
+            if (result == 0) {
+                GetAllAircract();
+            }
+            else {
                 printf("Disconnected from MS FS2020\n");
                 _connected = false;
-                _aircraftLoc.lat = MAXINT;
-                _aircraftOtherCount = 0;
+                _pendingRequest = false;
+                *_follow.callsign = '\0';
+                _aircraftData.loc.lat = MAXINT;
+                _otherAircraftCount = 0;
                 printf(WaitMsg);
             }
         }

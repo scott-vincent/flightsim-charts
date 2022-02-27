@@ -12,6 +12,16 @@ const char DefaultChart[] = "Airport Charts\\EG\\LL\\EGLL Heathrow.png";
 const int DefaultFPS = 8;
 const char DegreesSymbol[] = "\xC2\xB0";
 
+struct Position {
+    int x;
+    int y;
+};
+
+struct Location {
+    double lat;
+    double lon;
+};
+
 struct DrawData {
     ALLEGRO_BITMAP* bmp;
     int x;
@@ -44,9 +54,12 @@ struct MouseData {
 };
 
 struct LocData {
-    double lat;
-    double lon;
+    Location loc;
     double heading;
+    double bank;
+    double pitch;
+    double alt;
+    double speed;
     double wingSpan;
     char callsign[32];
     char model[32];
@@ -55,6 +68,14 @@ struct LocData {
 struct WindData {
     double direction;
     double speed;
+};
+
+struct OtherData {
+    Location loc;
+    double heading;
+    double wingSpan;
+    char callsign[32];
+    char model[32];
 };
 
 struct TagData {
@@ -84,26 +105,19 @@ struct CalibratedData {
     ChartData data;
 };
 
-struct Position {
-    int x;
-    int y;
-};
-
-struct Location {
-    double lat;
-    double lon;
-};
-
 struct TeleportData {
     // Data to send to SimConnect must come first
     Location loc;
     double heading;
     double bank;
     double pitch;
+    double alt;
+    double speed;
 
     int dataSize;
     Position pos;
     bool inProgress;
+    bool toGround;
 };
 
 struct SnapshotData {
@@ -117,6 +131,14 @@ struct SnapshotData {
     int dataSize;
     bool save;
     bool restore;
+};
+
+struct FollowData {
+    char callsign[32];
+    DWORD aircraftId;
+    char ownTag[32];
+    double ownWingSpan;
+    bool inProgress;
 };
 
 // Prototypes

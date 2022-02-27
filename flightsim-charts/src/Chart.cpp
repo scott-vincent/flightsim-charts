@@ -18,18 +18,20 @@ const char LabelFile[] = "images/label.png";
 const char MarkerFile[] = "images/marker.png";
 const char RingFile[] = "images/ring.png";
 const char ArrowFile[] = "images/arrow.png";
-const int MinScale = 40;
-const int MaxScale = 150;
+const int MinScale = 5;
+const int InitScale = 40;
+const int MaxScale = 200;
 
 // Externals
 extern bool _quit;
-extern LocData _aircraftLoc;
+extern LocData _aircraftData;
 extern WindData _windData;
-extern LocData _aircraftOtherLoc[MAX_AIRCRAFT];
-extern int _aircraftOtherCount;
-extern int _locDataSize;
+extern OtherData _otherAircraftData[MAX_AIRCRAFT];
+extern int _otherAircraftCount;
+extern int _otherDataSize;
 extern TeleportData _teleport;
 extern SnapshotData _snapshot;
+extern FollowData _follow;
 extern int _range;
 
 // Variables
@@ -58,7 +60,7 @@ MouseData _mouseData;
 ChartData _chartData;
 Settings _settings;
 ALLEGRO_MOUSE_STATE _mouse;
-LocData _snapshotOtherLoc[MAX_AIRCRAFT];
+OtherData _snapshotOtherData[MAX_AIRCRAFT];
 int _snapshotOtherCount;
 TagData _otherTag[MAX_AIRCRAFT];
 TagData _oldTag[MAX_AIRCRAFT];
@@ -76,9 +78,10 @@ Position _clickedPos;
 Position _clipboardPos;
 int _windDirection = -1;
 int _windSpeed = -1;
-HMENU _menu = NULL;
 int _menuItem = -1;
 int _lastRotate = MAXINT;
+char _closestAircraft[32];
+bool _menuCallback = false;
 
 enum MENU_ITEMS {
     MENU_LOAD_CHART,
@@ -90,9 +93,11 @@ enum MENU_ITEMS {
     MENU_ROTATE_LEFT_90,
     MENU_ROTATE_RIGHT_90,
     MENU_TELEPORT_HERE,
+    MENU_TELEPORT_HERE_GROUND,
     MENU_TELEPORT_CLIPBOARD,
     MENU_TELEPORT_RESTORE_LOCATION,
     MENU_TELEPORT_SAVE_LOCATION,
+    MENU_TELEPORT_FOLLOW,
     MENU_MAX_RANGE,
     MENU_SHOW_TAGS,
     MENU_SHOW_CALIBRATION,
@@ -196,6 +201,9 @@ void updateWindowTitle()
     if (*_tagText == '\0') {
         strcpy(titleStart, ProgramName);
     }
+    else if (*_follow.callsign != '\0') {
+        sprintf(titleStart, "Following %s", _tagText);
+    }
     else {
         strcpy(titleStart, _tagText);
     }
@@ -296,6 +304,74 @@ void initVars()
     _clickedLoc.lat = MAXINT;
     _clickedPos.x = -1;
     _clipboardPos.x = -1;
+    *_closestAircraft = '\0';
+}
+
+/// <summary>
+/// Finds closest aircraft to where mouse was right-clicked
+/// </summary>
+void findClosestAircraft(Location* loc)
+{
+    *_closestAircraft = '\0';
+
+    double closest = MAXINT;
+    for (int i = 0; i < _otherAircraftCount; i++) {
+        // Exclude self
+        if (strcmp(_tagText, _otherTag[i].tagText) == 0) {
+            continue;
+        }
+
+        double distance = greatCircleDistance(loc, &_otherAircraftData[i].loc);
+        if (closest > distance) {
+            strcpy(_closestAircraft, _otherAircraftData[i].callsign);
+            closest = distance;
+        }
+    }
+}
+
+HMENU createMenu()
+{
+    HMENU rotateMenu = CreatePopupMenu();
+    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_LEFT_20, "-20°");
+    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_RIGHT_20, "+20°");
+    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_LEFT_90, "-90°");
+    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_RIGHT_90, "+90°");
+
+    HMENU teleportMenu = CreatePopupMenu();
+    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_HERE_GROUND, "To here (on ground)");
+    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_HERE, "To here (same alt and speed)");
+    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_CLIPBOARD, "To clipboard location");
+    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_RESTORE_LOCATION, "Restore location");
+    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_SAVE_LOCATION, "Save location");
+
+    char menuText[64];
+    if (*_follow.callsign == '\0') {
+        Position clickedPos;
+        displayToChartPos(_teleport.pos.x, _teleport.pos.y, &_clickedPos);
+        chartPosToLocation(_clickedPos.x, _clickedPos.y, &_teleport.loc);
+        findClosestAircraft(&_teleport.loc);
+        sprintf(menuText, "Follow %s", _closestAircraft);
+        AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_FOLLOW, menuText);
+    }
+    else {
+        sprintf(menuText, "Unfollow %s", _follow.callsign);
+        AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_FOLLOW, menuText);
+    }
+
+    HMENU menu = CreatePopupMenu();
+    AppendMenu(menu, MF_STRING, MENU_LOAD_CHART, "Load chart");
+    AppendMenu(menu, MF_STRING, MENU_LOAD_CLOSEST, "Load closest");
+    AppendMenu(menu, MF_STRING, MENU_LOCATE_AIRCRAFT, "Locate aircraft");
+    AppendMenu(menu, MF_STRING, MENU_ROTATE_AGAIN, "Rotate again");
+    AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)rotateMenu, "Rotate aircraft");
+    AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)teleportMenu, "Teleport aircraft");
+    AppendMenu(menu, MF_STRING, MENU_MAX_RANGE, "Maximum Range");
+    AppendMenu(menu, MF_STRING, MENU_SHOW_TAGS, "Show tags");
+    AppendMenu(menu, MF_STRING, MENU_SHOW_CALIBRATION, "Show calibration");
+    AppendMenu(menu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(menu, MF_STRING, MENU_RECALIBRATE, "Re-calibrate chart");
+
+    return menu;
 }
 
 int enabledState(bool isEnabled)
@@ -321,29 +397,31 @@ int checkedState(bool isChecked)
 /// <summary>
 /// Determine which menu items should be enabled and which items should be checked
 /// </summary>
-void updateMenu()
+void updateMenu(HMENU menu)
 {
-    bool active = _aircraftLoc.lat != MAXINT;
+    bool active = _aircraftData.loc.lat != MAXINT;
     bool calibrated = _chartData.state == 2;
 
-    EnableMenuItem(_menu, MENU_LOAD_CLOSEST, enabledState(active));
-    EnableMenuItem(_menu, MENU_LOCATE_AIRCRAFT, enabledState(active && calibrated));
-    EnableMenuItem(_menu, MENU_ROTATE_AGAIN, enabledState(active && !_teleport.inProgress && _lastRotate != MAXINT));
-    EnableMenuItem(_menu, MENU_ROTATE_LEFT_20, enabledState(active && !_teleport.inProgress));
-    EnableMenuItem(_menu, MENU_ROTATE_RIGHT_20, enabledState(active && !_teleport.inProgress));
-    EnableMenuItem(_menu, MENU_ROTATE_LEFT_90, enabledState(active && !_teleport.inProgress));
-    EnableMenuItem(_menu, MENU_ROTATE_RIGHT_90, enabledState(active && !_teleport.inProgress));
-    EnableMenuItem(_menu, MENU_TELEPORT_HERE, enabledState(active && calibrated && !_teleport.inProgress));
-    EnableMenuItem(_menu, MENU_TELEPORT_CLIPBOARD, enabledState(active && !_teleport.inProgress));
-    EnableMenuItem(_menu, MENU_TELEPORT_RESTORE_LOCATION, enabledState(active && !_snapshot.save && _snapshot.loc.lat != MAXINT));
-    EnableMenuItem(_menu, MENU_TELEPORT_SAVE_LOCATION, enabledState(active && !_snapshot.save));
-    EnableMenuItem(_menu, MENU_MAX_RANGE, enabledState(active && calibrated));
-    EnableMenuItem(_menu, MENU_SHOW_TAGS, enabledState(calibrated));
-    EnableMenuItem(_menu, MENU_SHOW_CALIBRATION, enabledState(calibrated));
+    EnableMenuItem(menu, MENU_LOAD_CLOSEST, enabledState(active));
+    EnableMenuItem(menu, MENU_LOCATE_AIRCRAFT, enabledState(active && calibrated));
+    EnableMenuItem(menu, MENU_ROTATE_AGAIN, enabledState(active && !_teleport.inProgress && _lastRotate != MAXINT));
+    EnableMenuItem(menu, MENU_ROTATE_LEFT_20, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_ROTATE_RIGHT_20, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_ROTATE_LEFT_90, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_ROTATE_RIGHT_90, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_TELEPORT_HERE_GROUND, enabledState(active && calibrated && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_TELEPORT_HERE, enabledState(active && calibrated && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_TELEPORT_CLIPBOARD, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_TELEPORT_RESTORE_LOCATION, enabledState(active && !_snapshot.save && _snapshot.loc.lat != MAXINT));
+    EnableMenuItem(menu, MENU_TELEPORT_SAVE_LOCATION, enabledState(active && !_snapshot.save));
+    EnableMenuItem(menu, MENU_TELEPORT_FOLLOW, enabledState(active && !_follow.inProgress && *_closestAircraft != '\0'));
+    EnableMenuItem(menu, MENU_MAX_RANGE, enabledState(active && calibrated));
+    EnableMenuItem(menu, MENU_SHOW_TAGS, enabledState(calibrated));
+    EnableMenuItem(menu, MENU_SHOW_CALIBRATION, enabledState(calibrated));
 
-    CheckMenuItem(_menu, MENU_MAX_RANGE, checkedState(_maxRange));
-    CheckMenuItem(_menu, MENU_SHOW_TAGS, checkedState(_showTags));
-    CheckMenuItem(_menu, MENU_SHOW_CALIBRATION, checkedState(_showCalibration));
+    CheckMenuItem(menu, MENU_MAX_RANGE, checkedState(_maxRange));
+    CheckMenuItem(menu, MENU_SHOW_TAGS, checkedState(_showTags));
+    CheckMenuItem(menu, MENU_SHOW_CALIBRATION, checkedState(_showCalibration));
 }
 
 bool windowCallback(ALLEGRO_DISPLAY* display, UINT message,
@@ -360,8 +438,10 @@ bool windowCallback(ALLEGRO_DISPLAY* display, UINT message,
         // this right click so fix it here.
         SetCursorPos(menuPos.x, menuPos.y);
 
-        updateMenu();
-        TrackPopupMenu(_menu, TPM_RIGHTBUTTON, menuPos.x, menuPos.y, 0, _displayWindow, NULL);
+        HMENU menu = createMenu();
+        updateMenu(menu);
+        TrackPopupMenu(menu, TPM_RIGHTBUTTON, menuPos.x, menuPos.y, 0, _displayWindow, NULL);
+        DestroyMenu(menu);
     }
     else if (message == WM_COMMAND) {
         // Menu item must be actioned on main thread to avoid contention
@@ -374,9 +454,9 @@ bool windowCallback(ALLEGRO_DISPLAY* display, UINT message,
 void rotateAircraft(double adjustAngle)
 {
     _lastRotate = adjustAngle;
-    _teleport.loc.lat = _aircraftLoc.lat;
-    _teleport.loc.lon = _aircraftLoc.lon;
-    _teleport.heading = _aircraftLoc.heading + _lastRotate;
+    _teleport.loc.lat = _aircraftData.loc.lat;
+    _teleport.loc.lon = _aircraftData.loc.lon;
+    _teleport.heading = _aircraftData.heading + _lastRotate;
     _teleport.inProgress = true;
 }
 
@@ -385,124 +465,135 @@ void actionMenuItem()
     switch (_menuItem) {
 
     case MENU_LOAD_CHART:
+    {
         newChart();
         _showCalibration = false;
         break;
-
+    }
     case MENU_LOAD_CLOSEST:
+    {
         closestChart();
         _showCalibration = false;
         break;
-
+    }
     case MENU_LOCATE_AIRCRAFT:
+    {
         // Centre chart on current aircraft location
         Position pos;
-        locationToChartPos(_aircraftLoc.lat, _aircraftLoc.lon, &pos);
+        locationToChartPos(&_aircraftData.loc, &pos);
         _chart.x = pos.x;
         _chart.y = pos.y;
         break;
-
+    }
     case MENU_ROTATE_AGAIN:
+    {
         rotateAircraft(_lastRotate);
         break;
-
+    }
     case MENU_ROTATE_LEFT_20:
+    {
         rotateAircraft(-20);
         break;
-
+    }
     case MENU_ROTATE_RIGHT_20:
+    {
         rotateAircraft(20);
         break;
-
+    }
     case MENU_ROTATE_LEFT_90:
+    {
         rotateAircraft(-90);
         break;
-
+    }
     case MENU_ROTATE_RIGHT_90:
+    {
         rotateAircraft(90);
         break;
-
-    case MENU_TELEPORT_HERE:
+    }
+    case MENU_TELEPORT_HERE_GROUND:
+    {
+        // Sets altitude and speed to zero
         Position clickedPos;
         displayToChartPos(_teleport.pos.x, _teleport.pos.y, &_clickedPos);
         chartPosToLocation(_clickedPos.x, _clickedPos.y, &_teleport.loc);
-        _teleport.heading = _aircraftLoc.heading;
+        _teleport.heading = _aircraftData.heading;
+        _teleport.toGround = true;
         _teleport.inProgress = true;
         break;
-
+    }
+    case MENU_TELEPORT_HERE:
+    {
+        // Keeps current altitude and speed
+        Position clickedPos;
+        displayToChartPos(_teleport.pos.x, _teleport.pos.y, &_clickedPos);
+        chartPosToLocation(_clickedPos.x, _clickedPos.y, &_teleport.loc);
+        _teleport.heading = _aircraftData.heading;
+        _teleport.toGround = false;
+        _teleport.inProgress = true;
+        break;
+    }
     case MENU_TELEPORT_CLIPBOARD:
+    {
         getClipboardLocation(&_teleport.loc);
         if (_teleport.loc.lat == MAXINT) {
             showClipboardMessage(true);
         }
         else {
-            _teleport.heading = _aircraftLoc.heading;
+            _teleport.heading = _aircraftData.heading;
+            _teleport.toGround = true;
             _teleport.inProgress = true;
         }
         break;
-
+    }
     case MENU_TELEPORT_RESTORE_LOCATION:
+    {
         _snapshot.restore = true;
         break;
-
+    }
     case MENU_TELEPORT_SAVE_LOCATION:
+    {
         _snapshot.save = true;
         break;
-
+    }
+    case MENU_TELEPORT_FOLLOW:
+    {
+        if (*_follow.callsign == '\0') {
+            // Start following
+            strcpy(_follow.callsign, _closestAircraft);
+            strcpy(_follow.ownTag, _tagText);
+            _follow.ownWingSpan = _aircraftData.wingSpan;
+        }
+        else {
+            // Stop following
+            *_follow.callsign = '\0';
+        }
+        _follow.inProgress = true;
+        break;
+    }
     case MENU_MAX_RANGE:
+    {
         _maxRange = !_maxRange;
         _range = _maxRange ? MAX_RANGE : AIRCRAFT_RANGE;
         break;
-
+    }
     case MENU_SHOW_TAGS:
+    {
         _showTags = !_showTags;
         break;
-
+    }
     case MENU_SHOW_CALIBRATION:
+    {
         _showCalibration = !_showCalibration;
         clearCustomPoints();
         break;
-
+    }
     case MENU_RECALIBRATE:
+    {
         _chartData.state = 0;
         _showCalibration = false;
         break;
     }
-}
-
-bool initMenu()
-{
-    HMENU rotateMenu = CreatePopupMenu();
-    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_LEFT_20, "-20°");
-    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_RIGHT_20, "+20°");
-    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_LEFT_90, "-90°");
-    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_RIGHT_90, "+90°");
-
-    HMENU teleportMenu = CreatePopupMenu();
-    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_HERE, "To here");
-    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_CLIPBOARD, "To clipboard location");
-    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_RESTORE_LOCATION, "Restore location");
-    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_SAVE_LOCATION, "Save location");
-
-    _menu = CreatePopupMenu();
-    AppendMenu(_menu, MF_STRING, MENU_LOAD_CHART, "Load chart");
-    AppendMenu(_menu, MF_STRING, MENU_LOAD_CLOSEST, "Load closest");
-    AppendMenu(_menu, MF_STRING, MENU_LOCATE_AIRCRAFT, "Locate aircraft");
-    AppendMenu(_menu, MF_STRING, MENU_ROTATE_AGAIN, "Rotate again");
-    AppendMenu(_menu, MF_STRING | MF_POPUP, (UINT_PTR)rotateMenu, "Rotate aircraft");
-    AppendMenu(_menu, MF_STRING | MF_POPUP, (UINT_PTR)teleportMenu, "Teleport aircraft");
-    AppendMenu(_menu, MF_STRING, MENU_MAX_RANGE, "Maximum Range");
-    AppendMenu(_menu, MF_STRING, MENU_SHOW_TAGS, "Show tags");
-    AppendMenu(_menu, MF_STRING, MENU_SHOW_CALIBRATION, "Show calibration");
-    AppendMenu(_menu, MF_SEPARATOR, 0, NULL);
-    AppendMenu(_menu, MF_STRING, MENU_RECALIBRATE, "Re-calibrate chart");
-
-    // Listen for menu events
-    if (!al_win_add_window_callback(_display, &windowCallback, NULL)) {
-        return false;
     }
-
-    return true;
 }
 
 /// <summary>
@@ -601,8 +692,12 @@ bool init()
 
     al_register_event_source(_eventQueue, al_get_timer_event_source(_timer));
 
-    if (!initMenu()) {
-        printf("Failed to initialise menu\n");
+    // Listen for menu events
+    if (al_win_add_window_callback(_display, &windowCallback, NULL)) {
+        _menuCallback = true;
+    }
+    else {
+        printf("Failed to add window callback\n");
         return false;
     }
 
@@ -652,9 +747,8 @@ void cleanup()
         al_destroy_font(_font);
     }
 
-    if (_menu) {
+    if (_menuCallback) {
         al_win_remove_window_callback(_display, &windowCallback, NULL);
-        DestroyMenu(_menu);
     }
 
     if (_display) {
@@ -865,7 +959,7 @@ void drawOwnAircraft()
     int halfWidth;
     int halfHeight;
 
-    if (_aircraftLoc.wingSpan > WINGSPAN_SMALL) {
+    if (_aircraftData.wingSpan > WINGSPAN_SMALL) {
         bmp = _aircraft.bmp;
         halfWidth = _aircraft.halfWidth;
         halfHeight = _aircraft.halfHeight;
@@ -883,7 +977,7 @@ void drawOwnAircraft()
         _aircraft.scale = 0.14;
     }
 
-    al_draw_scaled_rotated_bitmap(bmp, halfWidth, halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _aircraftLoc.heading * DegreesToRadians, 0);
+    al_draw_scaled_rotated_bitmap(bmp, halfWidth, halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _aircraftData.heading * DegreesToRadians, 0);
 
     if (*_labelText != '\0') {
         // Show aircraft label
@@ -908,7 +1002,7 @@ void drawOwnAircraft()
 
 void drawOtherAircraft()
 {
-    if (_aircraftOtherCount == 0) {
+    if (_otherAircraftCount == 0) {
         return;
     }
 
@@ -933,19 +1027,22 @@ void drawOtherAircraft()
     }
 
     Position pos;
-    for (int i = 0; i < _aircraftOtherCount; i++) {
+    for (int i = 0; i < _otherAircraftCount; i++) {
         // Exclude self
         if (strcmp(_tagText, _otherTag[i].tagText) == 0) {
             continue;
         }
+        if (*_follow.callsign != '\0' && strcmp(_follow.ownTag, _otherTag[i].tagText) == 0) {
+            continue;
+        }
 
         // Don't draw other aircraft if it is outside the display
-        if (drawOtherAircraft(&displayPos1, &displayPos2, &_aircraftOtherLoc[i], &pos)) {
+        if (drawOtherAircraft(&displayPos1, &displayPos2, &_otherAircraftData[i].loc, &pos)) {
             ALLEGRO_BITMAP* bmp;
             int halfWidth;
             int halfHeight;
 
-            if (_aircraftOtherLoc[i].wingSpan > WINGSPAN_SMALL) {
+            if (_otherAircraftData[i].wingSpan > WINGSPAN_SMALL) {
                 bmp = _aircraft.otherBmp;
                 halfWidth = _aircraft.halfWidth;
                 halfHeight = _aircraft.halfHeight;
@@ -956,7 +1053,7 @@ void drawOtherAircraft()
                 halfHeight = _aircraft.smallHalfHeight;
             }
 
-            al_draw_scaled_rotated_bitmap(bmp, halfWidth, halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _aircraftOtherLoc[i].heading * DegreesToRadians, 0);
+            al_draw_scaled_rotated_bitmap(bmp, halfWidth, halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _otherAircraftData[i].heading * DegreesToRadians, 0);
 
             if (_otherTag[i].tag.bmp != NULL && _showTags) {
                 // Draw tag to right of aircraft
@@ -975,11 +1072,11 @@ void render()
     // Draw chart
     al_draw_scaled_bitmap(_chart.bmp, _view.x, _view.y, _view.width, _view.height, 0, 0, _displayWidth, _displayHeight, 0);
 
-    // Draw aircraft
-    drawOwnAircraft();
-
     // Draw other aircraft
     drawOtherAircraft();
+
+    // Draw aircraft
+    drawOwnAircraft();
 
     // Draw first marker or both if a message is being displayed
     int destX = _mouseData.dragX + _chart.x * _view.scale - _displayWidth / 2;
@@ -1107,7 +1204,7 @@ void newChart()
 /// </summary>
 void closestChart()
 {
-    if (_aircraftLoc.lat == MAXINT) {
+    if (_aircraftData.loc.lat == MAXINT) {
         return;
     }
 
@@ -1120,7 +1217,7 @@ void closestChart()
         return;
     }
 
-    CalibratedData* closest = findClosestChart(calib, count, &_aircraftLoc);
+    CalibratedData* closest = findClosestChart(calib, count, &_aircraftData.loc);
     strcpy(_settings.chart, closest->filename);
     free(calib);
 
@@ -1171,7 +1268,7 @@ void updateOwnLabel(char *newLabel)
 
 void updateOwnAircraft()
 {
-    if (_chartData.state != 2 || _aircraftLoc.lat == MAXINT) {
+    if (_chartData.state != 2 || _aircraftData.loc.lat == MAXINT) {
         _aircraft.x = MAXINT;
         return;
     }
@@ -1189,7 +1286,7 @@ void updateOwnAircraft()
 
     // Update own tag (shown in window title)
     char newTag[68];
-    createTagText(_aircraftLoc.callsign, _aircraftLoc.model, newTag);
+    createTagText(_aircraftData.callsign, _aircraftData.model, newTag);
 
     if (strcmp(_tagText, newTag) != 0) {
         strcpy(_tagText, newTag);
@@ -1226,7 +1323,7 @@ void updateOtherTags()
     }
 
     for (int i = 0; i < _snapshotOtherCount; i++) {
-        createTagText(_snapshotOtherLoc[i].callsign, _snapshotOtherLoc[i].model, _otherTag[i].tagText);
+        createTagText(_snapshotOtherData[i].callsign, _snapshotOtherData[i].model, _otherTag[i].tagText);
 
         bool tagFound = false;
         for (int j = 0; j < _tagCount; j++) {
@@ -1312,7 +1409,12 @@ void doUpdate()
 
     _chart.scale = 100 + _mouseStartZ + _mouse.z;
 
-    if (_chart.scale < MinScale) {
+    if (_chart.scale < -100) {
+        // Map just loaded or reset
+        _mouseStartZ += InitScale - _chart.scale;
+        _chart.scale = InitScale;
+    }
+    else if (_chart.scale < MinScale) {
         _mouseStartZ += MinScale - _chart.scale;
         _chart.scale = MinScale;
     }
@@ -1337,8 +1439,8 @@ void doUpdate()
     updateWind();
 
     // Take a new snapshot of the other aircraft
-    _snapshotOtherCount = _aircraftOtherCount;
-    memcpy(&_snapshotOtherLoc, &_aircraftOtherLoc, _locDataSize * _snapshotOtherCount);
+    _snapshotOtherCount = _otherAircraftCount;
+    memcpy(&_snapshotOtherData, &_otherAircraftData, _otherDataSize * _snapshotOtherCount);
 
     // Create any tags that don't already exist
     updateOtherTags();
@@ -1387,7 +1489,7 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
 
                 Location loc;
                 getClipboardLocation(&loc);
-                locationToChartPos(loc.lat, loc.lon, &_clipboardPos);
+                locationToChartPos(&loc, &_clipboardPos);
 
                 _titleState = -2;
             }

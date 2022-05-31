@@ -87,6 +87,7 @@ enum MENU_ITEMS {
     MENU_LOAD_CHART,
     MENU_LOAD_CLOSEST,
     MENU_LOCATE_AIRCRAFT,
+    MENU_FIX_CRASH,
     MENU_ROTATE_AGAIN,
     MENU_ROTATE_LEFT_20,
     MENU_ROTATE_RIGHT_20,
@@ -94,6 +95,7 @@ enum MENU_ITEMS {
     MENU_ROTATE_RIGHT_90,
     MENU_TELEPORT_HERE,
     MENU_TELEPORT_HERE_GROUND,
+    MENU_TELEPORT_HERE_AIR,
     MENU_TELEPORT_CLIPBOARD,
     MENU_TELEPORT_RESTORE_LOCATION,
     MENU_TELEPORT_SAVE_LOCATION,
@@ -340,13 +342,13 @@ HMENU createMenu()
     HMENU teleportMenu = CreatePopupMenu();
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_HERE_GROUND, "To here (on ground)");
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_HERE, "To here (same alt and speed)");
+    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_HERE_AIR, "To here (2000ft @ 150kn)");
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_CLIPBOARD, "To clipboard location");
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_RESTORE_LOCATION, "Restore location");
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_SAVE_LOCATION, "Save location");
 
     char menuText[64];
     if (*_follow.callsign == '\0') {
-        Position clickedPos;
         displayToChartPos(_teleport.pos.x, _teleport.pos.y, &_clickedPos);
         chartPosToLocation(_clickedPos.x, _clickedPos.y, &_teleport.loc);
         findClosestAircraft(&_teleport.loc);
@@ -362,6 +364,7 @@ HMENU createMenu()
     AppendMenu(menu, MF_STRING, MENU_LOAD_CHART, "Load chart");
     AppendMenu(menu, MF_STRING, MENU_LOAD_CLOSEST, "Load closest");
     AppendMenu(menu, MF_STRING, MENU_LOCATE_AIRCRAFT, "Locate aircraft");
+    AppendMenu(menu, MF_STRING, MENU_FIX_CRASH, "Fix crash");
     AppendMenu(menu, MF_STRING, MENU_ROTATE_AGAIN, "Rotate again");
     AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)rotateMenu, "Rotate aircraft");
     AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)teleportMenu, "Teleport aircraft");
@@ -404,6 +407,7 @@ void updateMenu(HMENU menu)
 
     EnableMenuItem(menu, MENU_LOAD_CLOSEST, enabledState(active));
     EnableMenuItem(menu, MENU_LOCATE_AIRCRAFT, enabledState(active && calibrated));
+    EnableMenuItem(menu, MENU_FIX_CRASH, enabledState(active && calibrated && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_ROTATE_AGAIN, enabledState(active && !_teleport.inProgress && _lastRotate != MAXINT));
     EnableMenuItem(menu, MENU_ROTATE_LEFT_20, enabledState(active && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_ROTATE_RIGHT_20, enabledState(active && !_teleport.inProgress));
@@ -411,6 +415,7 @@ void updateMenu(HMENU menu)
     EnableMenuItem(menu, MENU_ROTATE_RIGHT_90, enabledState(active && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_TELEPORT_HERE_GROUND, enabledState(active && calibrated && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_TELEPORT_HERE, enabledState(active && calibrated && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_TELEPORT_HERE_AIR, enabledState(active && calibrated && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_TELEPORT_CLIPBOARD, enabledState(active && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_TELEPORT_RESTORE_LOCATION, enabledState(active && !_snapshot.save && _snapshot.loc.lat != MAXINT));
     EnableMenuItem(menu, MENU_TELEPORT_SAVE_LOCATION, enabledState(active && !_snapshot.save));
@@ -485,6 +490,21 @@ void actionMenuItem()
         _chart.y = pos.y;
         break;
     }
+    case MENU_FIX_CRASH:
+    {
+        // Centre chart on current aircraft location and set aircraft to 2000ft @ 150kn
+        Position pos;
+        locationToChartPos(&_aircraftData.loc, &pos);
+        _chart.x = pos.x;
+        _chart.y = pos.y;
+        chartPosToLocation(pos.x, pos.y, &_teleport.loc);
+        _teleport.heading = _aircraftData.heading;
+        _teleport.alt = 2000;
+        _teleport.speed = 150;
+        _teleport.setAltSpeed = true;
+        _teleport.inProgress = true;
+        break;
+    }
     case MENU_ROTATE_AGAIN:
     {
         rotateAircraft(_lastRotate);
@@ -512,23 +532,35 @@ void actionMenuItem()
     }
     case MENU_TELEPORT_HERE_GROUND:
     {
-        // Sets altitude and speed to zero
-        Position clickedPos;
+        // Reset altitude and speed
         displayToChartPos(_teleport.pos.x, _teleport.pos.y, &_clickedPos);
         chartPosToLocation(_clickedPos.x, _clickedPos.y, &_teleport.loc);
         _teleport.heading = _aircraftData.heading;
-        _teleport.toGround = true;
+        _teleport.alt = 6;
+        _teleport.speed = 0;
+        _teleport.setAltSpeed = true;
         _teleport.inProgress = true;
         break;
     }
     case MENU_TELEPORT_HERE:
     {
         // Keeps current altitude and speed
-        Position clickedPos;
         displayToChartPos(_teleport.pos.x, _teleport.pos.y, &_clickedPos);
         chartPosToLocation(_clickedPos.x, _clickedPos.y, &_teleport.loc);
         _teleport.heading = _aircraftData.heading;
-        _teleport.toGround = false;
+        _teleport.setAltSpeed = false;
+        _teleport.inProgress = true;
+        break;
+    }
+    case MENU_TELEPORT_HERE_AIR:
+    {
+        // Sets altitude to 2000ft and speed to 150kn
+        displayToChartPos(_teleport.pos.x, _teleport.pos.y, &_clickedPos);
+        chartPosToLocation(_clickedPos.x, _clickedPos.y, &_teleport.loc);
+        _teleport.heading = _aircraftData.heading;
+        _teleport.alt = 2000;
+        _teleport.speed = 150;
+        _teleport.setAltSpeed = true;
         _teleport.inProgress = true;
         break;
     }
@@ -540,7 +572,9 @@ void actionMenuItem()
         }
         else {
             _teleport.heading = _aircraftData.heading;
-            _teleport.toGround = true;
+            _teleport.alt = 6;
+            _teleport.speed = 0;
+            _teleport.setAltSpeed = true;
             _teleport.inProgress = true;
         }
         break;

@@ -91,7 +91,7 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 
             if (_teleport.inProgress) {
                 stopFollowing();
-                if (_teleport.toGround) {
+                if (_teleport.setAltSpeed) {
                     // Include alt and speed
                     if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_SNAPSHOT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _snapshot.dataSize, &_teleport) != 0) {
                         printf("Failed to teleport aircraft\n");

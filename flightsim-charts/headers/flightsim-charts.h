@@ -117,7 +117,7 @@ struct TeleportData {
     int dataSize;
     Position pos;
     bool inProgress;
-    bool toGround;
+    bool setAltSpeed;
 };
 
 struct SnapshotData {

@@ -6,11 +6,11 @@
 
 Overlay Microsoft Flight Simulator (FS2020) aircraft data onto real airport charts in real-time. Instantly teleport to any stand on the chart, or anywhere in the world using Little Navmap or Google Maps (via shared clipboard data). Save your current aircraft position (on the ground or in the air) and instantly restore it at any time.
 
-Ever been frustrated, especially when using VATSIM because you aren't sure which taxi way is which and you don't know where the correct stand is because FS2020 is using completely different stand numbers?
+Ever been frustrated, especially when using VATSIM because you aren't sure which taxiway is which and you don't know where the correct stand is because FS2020 is using completely different stand numbers?
 
 This program connects to FS2020 and allows you to load any Airport Chart (png or jpg format). The chart can be zoomed and panned and your aircraft location is shown in real time on the chart. It also shows other aircraft around you and they are tagged to show their callsign and aircraft model.
 
-Charts for most airports can be downloaded from the internet and are most often in PDF format, containing multiple charts. After downloading a pdf you can load it into your favourite grahpics editing program, e.g. Gimp. When opening a pdf you have to choose the resolution you require and 500 pixels/inch seems to work well. Find the page that contains taxi way and parking information, rotate it so it is North up and then save it in .png or .jpg format.
+Charts for most airports can be downloaded from the internet and are most often in PDF format, containing multiple charts. After downloading a pdf you can load it into your favourite graphics editing program, e.g. Gimp. When opening a pdf you have to choose the resolution you require and 500 pixels/inch seems to work well. Find the page that contains taxiway and parking information, rotate it so it is North up and then save it in .png or .jpg format.
 
 # Quick Start
 
@@ -18,7 +18,7 @@ You can download the latest release as a zip file from here:
 
 Link: [Latest release of FlightSim-Charts](https://github.com/scott-vincent/flightsim-charts/releases/latest/download/flightsim-charts-v1.4.0-Windows-x64.zip)
 
-Open the zip file and drag the flightsim-charts folder onto your desktop (or anywhere you want on your PC). Open the folder on your desktop and run flightsim-charts.exe. The first time you run it you will get a warning saying "Windows protected your PC". To continue, you need to click "More info" and then "Run anyway". WIndows always gives this warning for downloaded files. I can assure you the file is safe as I've built it myself but you can always right-click it and virus scan it if you like.
+Open the zip file and drag the flightsim-charts folder onto your desktop (or anywhere you want on your PC). Open the folder on your desktop and run flightsim-charts.exe. The first time you run it you will get a warning saying "Windows protected your PC". To continue, you need to click "More info" and then "Run anyway". Windows always gives this warning for downloaded files. I can assure you the file is safe as I've built it myself but you can always right-click it and virus scan it if you like.
 
 The first time you run it it will ask you for a chart file. I've included a few with the zip that I've already calibrated but if you load your own you will have do a quick calibration the first time you load it. This involves selecting two points on the chart and the same two points in either Little Navmap (recommended) or OpenStreetMap. Choose two points that are well separated and diagonally opposite each other on the chart if possible.
 

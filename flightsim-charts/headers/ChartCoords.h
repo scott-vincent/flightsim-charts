@@ -9,6 +9,11 @@ struct AircraftPosition {
     char text[256];
 };
 
+struct Intersect {
+    int val;
+    double dist;
+};
+
 void displayToChartPos(int x, int y, Position* pos);
 void chartToDisplayPos(int x, int y, Position* pos);
 void locationToChartPos(Location* loc, Position* pos);

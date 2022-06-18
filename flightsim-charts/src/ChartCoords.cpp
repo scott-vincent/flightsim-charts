@@ -170,6 +170,36 @@ void greatCirclePos(Location* loc, double headingTrue, double distanceNm)
     loc->lon = lon2r * 180.0 / M_PI;
 }
 
+void getIntersectX(int displayPosY, Position pos, Intersect* intersect)
+{
+    double angle = _aircraftData.heading - 180;
+    if (angle < -90) angle += 180;
+    if (angle > 90) angle -= 180;
+    if (angle == -90 || angle == 90) {
+        angle += 1;
+    }
+
+    int adj = displayPosY - pos.y;
+    int opp = (double)adj * tan(angle * DegreesToRadians);
+    intersect->val = pos.x - opp;
+    intersect->dist = sqrt(adj * adj + opp * opp);
+}
+
+void getIntersectY(int displayPosX, Position pos, Intersect* intersect)
+{
+    double angle = _aircraftData.heading - 90;
+    if (angle < -90) angle += 180;
+    if (angle > 90) angle -= 180;
+    if (angle == -90 || angle == 90) {
+        angle += 1;
+    }
+
+    int adj = displayPosX - pos.x;
+    int opp = (double)adj * tan(angle * DegreesToRadians);
+    intersect->val = pos.y + opp;
+    intersect->dist = sqrt(adj * adj + opp * opp);
+}
+
 /// <summary>
 /// Convert aircraft location to aircraft chart position.
 /// If aircraft is outside the display, bring it back on at the
@@ -203,68 +233,90 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
         return;
     }
 
-    // Draw a line from centre of display to aircraft and see
-    // where the line intersects a display edge.
-    int centreX = _chart.x + _mouseData.dragX / _view.scale;
-    int centreY = _chart.y + _mouseData.dragY / _view.scale;
-    bool intersected = false;
+    // Project a line forwards from the aircraft on its current
+    // heading to see where it intersects each display edge.
+    Intersect topX;
+    getIntersectX(displayPos1.y, pos, &topX);
+    Intersect bottomX;
+    getIntersectX(displayPos2.y, pos, &bottomX);
+    Intersect leftY;
+    getIntersectY(displayPos1.x, pos, &leftY);
+    Intersect rightY;
+    getIntersectY(displayPos2.x, pos, &rightY);
 
-    if (pos.x < displayPos1.x) {
-        int xIntersectDiff = centreX - displayPos1.x;
-        double xDiff = centreX - pos.x;
-        double scale = xDiff / xIntersectDiff;
-        int yDiff = centreY - pos.y;
-        int intersectY = centreY - yDiff / scale;
-
-        if (intersectY >= displayPos1.y && intersectY <= displayPos2.y) {
-            intersected = true;
-            adjustedPos->x = displayPos1.x;
-            adjustedPos->y = intersectY;
-            adjustedPos->labelX = 1;
-            adjustedPos->labelY = 0;
-        }
+    // Make intersects that fall outside the display area less favourable
+    if (topX.val < displayPos1.x) {
+        topX.val = displayPos1.x;
+        topX.dist += 50000;
     }
-    else if (pos.x > displayPos2.x) {
-        int xIntersectDiff = centreX - displayPos2.x;
-        double xDiff = centreX - pos.x;
-        double scale = xDiff / xIntersectDiff;
-        int yDiff = centreY - pos.y;
-        int intersectY = centreY - yDiff / scale;
-
-        if (intersectY >= displayPos1.y && intersectY <= displayPos2.y) {
-            intersected = true;
-            adjustedPos->x = displayPos2.x;
-            adjustedPos->y = intersectY;
-            adjustedPos->labelX = -1;
-            adjustedPos->labelY = 0;
-        }
+    else if (topX.val > displayPos2.x) {
+        topX.val = displayPos2.x;
+        topX.dist += 50000;
+    }
+    if (bottomX.val < displayPos1.x) {
+        bottomX.val = displayPos1.x;
+        bottomX.dist += 50000;
+    }
+    else if (bottomX.val > displayPos2.x) {
+        bottomX.val = displayPos2.x;
+        bottomX.dist += 50000;
+    }
+    if (leftY.val < displayPos1.y) {
+        leftY.val = displayPos1.y;
+        leftY.dist += 50000;
+    }
+    else if (leftY.val > displayPos2.y) {
+        leftY.val = displayPos2.y;
+        leftY.dist += 50000;
+    }
+    if (rightY.val < displayPos1.y) {
+        rightY.val = displayPos1.y;
+        rightY.dist += 50000;
+    }
+    else if (rightY.val > displayPos2.y) {
+        rightY.val = displayPos2.y;
+        rightY.dist += 50000;
     }
 
-    if (!intersected) {
-        if (pos.y < displayPos1.y) {
-            int yIntersectDiff = centreY - displayPos1.y;
-            double yDiff = centreY - pos.y;
-            double scale = yDiff / yIntersectDiff;
-            int xDiff = centreX - pos.x;
-            int intersectX = centreX - xDiff / scale;
+    // Draw the aircraft at the closest intersect
+    double minDist = topX.dist;
+    adjustedPos->x = topX.val;
+    adjustedPos->y = displayPos1.y;
 
-            adjustedPos->y = displayPos1.y;
-            adjustedPos->x = intersectX;
-            adjustedPos->labelY = 1;
-            adjustedPos->labelX = 0;
-        }
-        else {
-            int yIntersectDiff = centreY - displayPos2.y;
-            double yDiff = centreY - pos.y;
-            double scale = yDiff / yIntersectDiff;
-            int xDiff = centreX - pos.x;
-            int intersectX = centreX - xDiff / scale;
+    if (bottomX.dist < minDist) {
+        minDist = bottomX.dist;
+        adjustedPos->x = bottomX.val;
+        adjustedPos->y = displayPos2.y;
+    }
+    if (leftY.dist < minDist) {
+        minDist = leftY.dist;
+        adjustedPos->x = displayPos1.x;
+        adjustedPos->y = leftY.val;
+    }
+    if (rightY.dist < minDist) {
+        minDist = rightY.dist;
+        adjustedPos->x = displayPos2.x;
+        adjustedPos->y = rightY.val;
+    }
 
-            adjustedPos->y = displayPos2.y;
-            adjustedPos->x = intersectX;
-            adjustedPos->labelY = -1;
-            adjustedPos->labelX = 0;
-        }
+    if (adjustedPos->y == displayPos1.y) {
+        adjustedPos->labelY = 1;
+    }
+    else if (adjustedPos->y == displayPos2.y) {
+        adjustedPos->labelY = -1;
+    }
+    else {
+        adjustedPos->labelY = 0;
+    }
+
+    if (adjustedPos->x == displayPos1.x) {
+        adjustedPos->labelX = 1;
+    }
+    else if (adjustedPos->x == displayPos2.x) {
+        adjustedPos->labelX = -1;
+    }
+    else {
+        adjustedPos->labelX = 0;
     }
 
     // Calculate how far off the display the aircraft is in nm.

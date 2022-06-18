@@ -33,6 +33,7 @@ extern TeleportData _teleport;
 extern SnapshotData _snapshot;
 extern FollowData _follow;
 extern int _range;
+extern bool _maxRange;
 
 // Variables
 double DegreesToRadians = ALLEGRO_PI / 180.0f;
@@ -70,7 +71,6 @@ int _drawDataSize = sizeof(DrawData);
 int _mouseStartZ = 0;
 int _titleState;
 int _titleDelay;
-bool _maxRange = false;
 bool _showTags = true;
 bool _showCalibration = false;
 Location _clickedLoc;
@@ -1027,6 +1027,9 @@ void drawOwnAircraft()
             pos.x -= _aircraftLabel.width / 2;
             if (_aircraftLabel.y == -1) {
                 pos.y -= _aircraftLabel.height;
+            }
+            else if (_aircraftLabel.y == 1) {
+                pos.y += 5;
             }
         }
 

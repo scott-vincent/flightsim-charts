@@ -36,7 +36,8 @@ bool _pendingRequest = false;
 HANDLE hSimConnect = NULL;
 bool _connected = false;
 bool _shownMaxExceeded = false;
-int _range = AIRCRAFT_RANGE;
+int _range;
+bool _maxRange = true;
 TeleportData _teleport;
 SnapshotData _snapshot;
 FollowData _follow;
@@ -366,6 +367,7 @@ void server()
     _snapshot.restore = false;
     *_follow.callsign = '\0';
     _follow.inProgress = false;
+    _range = _maxRange ? MAX_RANGE : AIRCRAFT_RANGE;
 
     HRESULT result;
 

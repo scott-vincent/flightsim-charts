@@ -170,34 +170,81 @@ void greatCirclePos(Location* loc, double headingTrue, double distanceNm)
     loc->lon = lon2r * 180.0 / M_PI;
 }
 
-void getIntersectX(int displayPosY, Position pos, Intersect* intersect)
+void getIntersectX(int displayPosY, Position* pos, Intersect* intersect)
 {
     double angle = _aircraftData.heading - 180;
-    if (angle < -90) angle += 180;
-    if (angle > 90) angle -= 180;
-    if (angle == -90 || angle == 90) {
-        angle += 1;
-    }
-
-    int adj = displayPosY - pos.y;
+    int adj = displayPosY - pos->y;
     int opp = (double)adj * tan(angle * DegreesToRadians);
-    intersect->val = pos.x - opp;
+    intersect->val = pos->x - opp;
     intersect->dist = sqrt(adj * adj + opp * opp);
 }
 
-void getIntersectY(int displayPosX, Position pos, Intersect* intersect)
+void getIntersectY(int displayPosX, Position* pos, Intersect* intersect)
 {
     double angle = _aircraftData.heading - 90;
-    if (angle < -90) angle += 180;
-    if (angle > 90) angle -= 180;
-    if (angle == -90 || angle == 90) {
-        angle += 1;
+    int adj = displayPosX - pos->x;
+    int opp = (double)adj * tan(angle * DegreesToRadians);
+    intersect->val = pos->y + opp;
+    intersect->dist = sqrt(adj * adj + opp * opp);
+}
+
+void getCentreIntersect(Position* displayPos1, Position* displayPos2, Position* pos, AircraftPosition* adjustedPos)
+{
+    // Draw a line from centre of display to aircraft and see
+    // where the line intersects a display edge.
+    int centreX = _chart.x + _mouseData.dragX / _view.scale;
+    int centreY = _chart.y + _mouseData.dragY / _view.scale;
+    bool intersected = false;
+
+    if (pos->x < displayPos1->x) {
+        int xIntersectDiff = centreX - displayPos1->x;
+        double xDiff = centreX - pos->x;
+        double scale = xDiff / xIntersectDiff;
+        int yDiff = centreY - pos->y;
+        int intersectY = centreY - yDiff / scale;
+
+        if (intersectY >= displayPos1->y && intersectY <= displayPos2->y) {
+            intersected = true;
+            adjustedPos->x = displayPos1->x;
+            adjustedPos->y = intersectY;
+        }
+    }
+    else if (pos->x > displayPos2->x) {
+        int xIntersectDiff = centreX - displayPos2->x;
+        double xDiff = centreX - pos->x;
+        double scale = xDiff / xIntersectDiff;
+        int yDiff = centreY - pos->y;
+        int intersectY = centreY - yDiff / scale;
+
+        if (intersectY >= displayPos1->y && intersectY <= displayPos2->y) {
+            intersected = true;
+            adjustedPos->x = displayPos2->x;
+            adjustedPos->y = intersectY;
+        }
     }
 
-    int adj = displayPosX - pos.x;
-    int opp = (double)adj * tan(angle * DegreesToRadians);
-    intersect->val = pos.y + opp;
-    intersect->dist = sqrt(adj * adj + opp * opp);
+    if (!intersected) {
+        if (pos->y < displayPos1->y) {
+            int yIntersectDiff = centreY - displayPos1->y;
+            double yDiff = centreY - pos->y;
+            double scale = yDiff / yIntersectDiff;
+            int xDiff = centreX - pos->x;
+            int intersectX = centreX - xDiff / scale;
+
+            adjustedPos->y = displayPos1->y;
+            adjustedPos->x = intersectX;
+        }
+        else {
+            int yIntersectDiff = centreY - displayPos2->y;
+            double yDiff = centreY - pos->y;
+            double scale = yDiff / yIntersectDiff;
+            int xDiff = centreX - pos->x;
+            int intersectX = centreX - xDiff / scale;
+
+            adjustedPos->y = displayPos2->y;
+            adjustedPos->x = intersectX;
+        }
+    }
 }
 
 /// <summary>
@@ -236,49 +283,50 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
     // Project a line forwards from the aircraft on its current
     // heading to see where it intersects each display edge.
     Intersect topX;
-    getIntersectX(displayPos1.y, pos, &topX);
+    if (pos.y < displayPos1.y && _aircraftData.heading > 90 && _aircraftData.heading < 270) {
+        getIntersectX(displayPos1.y, &pos, &topX);
+        if (topX.val < displayPos1.x || topX.val > displayPos2.x) {
+            topX.dist = 999999;
+        }
+    }
+    else {
+        topX.dist = 999999;
+    }
+
     Intersect bottomX;
-    getIntersectX(displayPos2.y, pos, &bottomX);
+    if (pos.y > displayPos2.y && (_aircraftData.heading < 90 || _aircraftData.heading > 270)) {
+        getIntersectX(displayPos2.y, &pos, &bottomX);
+        if (bottomX.val < displayPos1.x || bottomX.val > displayPos2.x) {
+            bottomX.dist = 999999;
+        }
+    }
+    else {
+        bottomX.dist = 999999;
+    }
+
     Intersect leftY;
-    getIntersectY(displayPos1.x, pos, &leftY);
+    if (pos.x < displayPos1.x && _aircraftData.heading < 180) {
+        getIntersectY(displayPos1.x, &pos, &leftY);
+        if (leftY.val < displayPos1.y || leftY.val > displayPos2.y) {
+            leftY.dist = 999999;
+        }
+    }
+    else {
+        leftY.dist = 999999;
+    }
+
     Intersect rightY;
-    getIntersectY(displayPos2.x, pos, &rightY);
-
-    // Make intersects that fall outside the display area less favourable
-    if (topX.val < displayPos1.x) {
-        topX.val = displayPos1.x;
-        topX.dist += 50000;
+    if (pos.x > displayPos2.x && _aircraftData.heading > 180) {
+        getIntersectY(displayPos2.x, &pos, &rightY);
+        if (rightY.val < displayPos1.y || rightY.val > displayPos2.y) {
+            rightY.dist = 999999;
+        }
     }
-    else if (topX.val > displayPos2.x) {
-        topX.val = displayPos2.x;
-        topX.dist += 50000;
-    }
-    if (bottomX.val < displayPos1.x) {
-        bottomX.val = displayPos1.x;
-        bottomX.dist += 50000;
-    }
-    else if (bottomX.val > displayPos2.x) {
-        bottomX.val = displayPos2.x;
-        bottomX.dist += 50000;
-    }
-    if (leftY.val < displayPos1.y) {
-        leftY.val = displayPos1.y;
-        leftY.dist += 50000;
-    }
-    else if (leftY.val > displayPos2.y) {
-        leftY.val = displayPos2.y;
-        leftY.dist += 50000;
-    }
-    if (rightY.val < displayPos1.y) {
-        rightY.val = displayPos1.y;
-        rightY.dist += 50000;
-    }
-    else if (rightY.val > displayPos2.y) {
-        rightY.val = displayPos2.y;
-        rightY.dist += 50000;
+    else {
+        rightY.dist = 999999;
     }
 
-    // Draw the aircraft at the closest intersect
+    // Find the closest intersect (if any)
     double minDist = topX.dist;
     adjustedPos->x = topX.val;
     adjustedPos->y = displayPos1.y;
@@ -299,6 +347,12 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
         adjustedPos->y = rightY.val;
     }
 
+    // If no intersects use intersect from centre of display to aircraft (ignore heading)
+    if (minDist == 999999) {
+        getCentreIntersect(&displayPos1, &displayPos2, &pos, adjustedPos);
+    }
+
+    // Position label
     if (adjustedPos->y == displayPos1.y) {
         adjustedPos->labelY = 1;
     }

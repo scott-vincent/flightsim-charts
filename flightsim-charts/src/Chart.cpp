@@ -14,6 +14,13 @@ const char AircraftFile[] = "images/aircraft.png";
 const char AircraftSmallFile[] = "images/aircraft_small.png";
 const char AircraftOtherFile[] = "images/aircraft_other.png";
 const char AircraftSmallOtherFile[] = "images/aircraft_small_other.png";
+const char HelicopterOtherFile[] = "images/helicopter_other.png";
+const char GliderOtherFile[] = "images/glider_other.png";
+const char LargeOtherFile[] = "images/aircraft_large_other.png";
+const char JetOtherFile[] = "images/small_jet_other.png";
+const char VehicleFile[] = "images/vehicle.png";
+const char AirportFile[] = "images/airport.png";
+const char WaypointFile[] = "images/waypoint.png";
 const char LabelFile[] = "images/label.png";
 const char MarkerFile[] = "images/marker.png";
 const char RingFile[] = "images/ring.png";
@@ -34,6 +41,11 @@ extern SnapshotData _snapshot;
 extern FollowData _follow;
 extern int _range;
 extern bool _maxRange;
+extern int _aiFixedCount;
+extern AI_Fixed _aiFixed[Max_AI_Fixed];
+extern bool _connected;
+extern int _aiAircraftCount;
+extern AI_Aircraft _aiAircraft[Max_AI_Aircraft];
 
 // Variables
 double DegreesToRadians = ALLEGRO_PI / 180.0f;
@@ -73,7 +85,7 @@ int _titleState;
 int _titleDelay;
 bool _showTags = true;
 bool _showCalibration = false;
-Location _clickedLoc;
+Locn _clickedLoc;
 Position _clickedPos;
 Position _clipboardPos;
 int _windDirection = -1;
@@ -278,6 +290,13 @@ void initVars()
     _aircraft.smallBmp = NULL;
     _aircraft.otherBmp = NULL;
     _aircraft.smallOtherBmp = NULL;
+    _aircraft.helicopterOtherBmp = NULL;
+    _aircraft.gliderOtherBmp = NULL;
+    _aircraft.largeOtherBmp = NULL;
+    _aircraft.jetOtherBmp = NULL;
+    _aircraft.vehicleBmp = NULL;
+    _aircraft.airportBmp = NULL;
+    _aircraft.waypointBmp = NULL;
     _aircraftLabel.bmp = NULL;
     _aircraftLabelBmpCopy = NULL;
     _marker.bmp = NULL;
@@ -312,7 +331,7 @@ void initVars()
 /// <summary>
 /// Finds closest aircraft to where mouse was right-clicked
 /// </summary>
-void findClosestAircraft(Location* loc)
+void findClosestAircraft(Locn* loc)
 {
     *_closestAircraft = '\0';
 
@@ -756,6 +775,13 @@ void cleanup()
     cleanupBitmap(_aircraft.smallBmp);
     cleanupBitmap(_aircraft.otherBmp);
     cleanupBitmap(_aircraft.smallOtherBmp);
+    cleanupBitmap(_aircraft.helicopterOtherBmp);
+    cleanupBitmap(_aircraft.gliderOtherBmp);
+    cleanupBitmap(_aircraft.vehicleBmp);
+    cleanupBitmap(_aircraft.largeOtherBmp);
+    cleanupBitmap(_aircraft.jetOtherBmp);
+    cleanupBitmap(_aircraft.airportBmp);
+    cleanupBitmap(_aircraft.waypointBmp);
     cleanupBitmap(_aircraftLabel.bmp);
     cleanupBitmap(_aircraftLabelBmpCopy);
     cleanupBitmap(_marker.bmp);
@@ -767,6 +793,14 @@ void cleanup()
     // Clenaup tags
     for (int i = 0; i < _tagCount; i++) {
         cleanupBitmap(_otherTag[i].tag.bmp);
+    }
+
+    for (int i = 0; i < _aiAircraftCount; i++) {
+        cleanupBitmap(_aiAircraft[i].tagData.tag.bmp);
+    }
+
+    for (int i = 0; i < _aiFixedCount; i++) {
+        cleanupBitmap(_aiFixed[i].tagData.tag.bmp);
     }
 
     if (_timer) {
@@ -798,7 +832,12 @@ void createTagText(char* callsign, char* model, char* tagText)
         modelStart = strrchr(model, '_');
     }
     if (!modelStart) {
-        strcpy(tagText, callsign);
+        if (strlen(model) < 6 && strcmp(model, "GRND") != 0) {
+            sprintf(tagText, "%s %s", callsign, model);
+        }
+        else {
+            strcpy(tagText, callsign);
+        }
         return;
     }
 
@@ -887,6 +926,62 @@ bool initAircraft()
     if (!_aircraft.smallOtherBmp) {
         char msg[256];
         sprintf(msg, "Missing file: %s\n", AircraftSmallOtherFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.helicopterOtherBmp = al_load_bitmap(HelicopterOtherFile);
+    if (!_aircraft.helicopterOtherBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", HelicopterOtherFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.gliderOtherBmp = al_load_bitmap(GliderOtherFile);
+    if (!_aircraft.gliderOtherBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", GliderOtherFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.largeOtherBmp = al_load_bitmap(LargeOtherFile);
+    if (!_aircraft.largeOtherBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", LargeOtherFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.jetOtherBmp = al_load_bitmap(JetOtherFile);
+    if (!_aircraft.jetOtherBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", JetOtherFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.vehicleBmp = al_load_bitmap(VehicleFile);
+    if (!_aircraft.vehicleBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", VehicleFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.airportBmp = al_load_bitmap(AirportFile);
+    if (!_aircraft.airportBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", AirportFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.waypointBmp = al_load_bitmap(WaypointFile);
+    if (!_aircraft.waypointBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", WaypointFile);
         showMessage(msg, true);
         return false;
     }
@@ -1037,6 +1132,63 @@ void drawOwnAircraft()
     }
 }
 
+void getIconData(char *model, IconData* iconData, int wingSpan)
+{
+    iconData->halfWidth = _aircraft.smallHalfWidth;
+    iconData->halfHeight = _aircraft.smallHalfHeight;
+
+    if (strlen(model) > 5) {
+        iconData->bmp = _aircraft.smallOtherBmp;
+        return;
+    }
+
+    if (strcmp(model, "GLID") == 0) {
+        iconData->bmp = _aircraft.gliderOtherBmp;
+        return;
+    }
+
+    if (strcmp(model, "GRND") == 0) {
+        iconData->bmp = _aircraft.vehicleBmp;
+        return;
+    }
+
+    char prefix[8];
+    sprintf(prefix, "_%.3s_", model);
+
+    if (strstr(Helis, prefix) != NULL) {
+        iconData->bmp = _aircraft.helicopterOtherBmp;
+        return;
+    }
+
+    iconData->halfWidth = _aircraft.halfWidth;
+    iconData->halfHeight = _aircraft.halfHeight;
+
+    if (strstr(Airliners, prefix) != NULL) {
+        iconData->bmp = _aircraft.otherBmp;
+        return;
+    }
+
+    if (strstr(Large_Airliners, prefix) != NULL) {
+        iconData->bmp = _aircraft.largeOtherBmp;
+        return;
+    }
+
+    if (strstr(Jets, prefix) != NULL) {
+        iconData->bmp = _aircraft.jetOtherBmp;
+        return;
+    }
+
+    // Default
+    if (wingSpan > WINGSPAN_SMALL) {
+        iconData->bmp = _aircraft.otherBmp;
+        return;
+    }
+
+    iconData->bmp = _aircraft.smallOtherBmp;
+    iconData->halfWidth = _aircraft.smallHalfWidth;
+    iconData->halfHeight = _aircraft.smallHalfHeight;
+}
+
 void drawOtherAircraft()
 {
     if (_otherAircraftCount == 0) {
@@ -1049,7 +1201,7 @@ void drawOtherAircraft()
     Position displayPos2;
     displayToChartPos(_displayWidth - 1, _displayHeight - 1, &displayPos2);
 
-    // Expand the display slightly so aircraft can be drawn partly off the edge
+    // Expand the display slightly so we can draw partly off the edge
     double border = 15.0 / _view.scale;
     displayPos1.x -= border;
     displayPos1.y -= border;
@@ -1073,28 +1225,108 @@ void drawOtherAircraft()
             continue;
         }
 
-        // Don't draw other aircraft if it is outside the display
-        if (drawOtherAircraft(&displayPos1, &displayPos2, &_otherAircraftData[i].loc, &pos)) {
-            ALLEGRO_BITMAP* bmp;
-            int halfWidth;
-            int halfHeight;
+        // Don't draw other aircraft if outside the display
+        if (drawOther(&displayPos1, &displayPos2, &_otherAircraftData[i].loc, &pos)) {
+            IconData iconData;
+            getIconData(_aiAircraft[i].model, &iconData, _otherAircraftData[i].wingSpan);
 
-            if (_otherAircraftData[i].wingSpan > WINGSPAN_SMALL) {
-                bmp = _aircraft.otherBmp;
-                halfWidth = _aircraft.halfWidth;
-                halfHeight = _aircraft.halfHeight;
-            }
-            else {
-                bmp = _aircraft.smallOtherBmp;
-                halfWidth = _aircraft.smallHalfWidth;
-                halfHeight = _aircraft.smallHalfHeight;
-            }
-
-            al_draw_scaled_rotated_bitmap(bmp, halfWidth, halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _otherAircraftData[i].heading * DegreesToRadians, 0);
+            al_draw_scaled_rotated_bitmap(iconData.bmp, iconData.halfWidth, iconData.halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _otherAircraftData[i].heading * DegreesToRadians, 0);
 
             if (_otherTag[i].tag.bmp != NULL && _showTags) {
                 // Draw tag to right of aircraft
-                al_draw_bitmap(_otherTag[i].tag.bmp, pos.x + 1 + halfHeight * _aircraft.scale, pos.y - _otherTag[i].tag.height / 2, 0);
+                al_draw_bitmap(_otherTag[i].tag.bmp, pos.x + 1 + iconData.halfHeight * _aircraft.scale, pos.y - _otherTag[i].tag.height / 2.0, 0);
+            }
+        }
+    }
+}
+
+void drawAiObjects()
+{
+    if (_connected && _aiFixedCount == 0) {
+        return;
+    }
+
+    Position displayPos1;
+    displayToChartPos(0, 0, &displayPos1);
+
+    Position displayPos2;
+    displayToChartPos(_displayWidth - 1, _displayHeight - 1, &displayPos2);
+
+    // Expand the display slightly so we can draw partly off the edge
+    double border = 15.0 / _view.scale;
+    displayPos1.x -= border;
+    displayPos1.y -= border;
+    displayPos2.x += border;
+    displayPos2.y += border;
+
+    if (_view.scale > 0.2) {
+        _aircraft.scale = 0.12;
+    }
+    else {
+        _aircraft.scale = 0.09;
+    }
+
+    Position pos;
+
+    // If we aren't currently connected draw the AI aircraft as they won't be injected
+    if (!_connected) {
+        TagData moreTag;
+
+        for (int i = 0; i < _aiAircraftCount; i++) {
+            // Don't draw aircraft if outside the display
+            if (drawOther(&displayPos1, &displayPos2, &_aiAircraft[i].loc, &pos)) {
+                IconData iconData;
+                getIconData(_aiAircraft[i].model, &iconData, 0);
+
+                al_draw_scaled_rotated_bitmap(iconData.bmp, iconData.halfWidth, iconData.halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _aiAircraft[i].heading * DegreesToRadians, 0);
+
+                if (_showTags) {
+                    if (_aiAircraft[i].tagData.tag.bmp == NULL) {
+                        createTagBitmap(&_aiAircraft[i].tagData);
+                    }
+
+                    // Draw tag to right of aircraft
+                    al_draw_bitmap(_aiAircraft[i].tagData.tag.bmp, pos.x + 1 + iconData.halfHeight * _aircraft.scale, pos.y - _aiAircraft[i].tagData.tag.height / 2.0, 0);
+
+                    // Add a second tag with alt and speed
+                    sprintf(moreTag.tagText, "%.0lf %.0lf", _aiAircraft[i].alt, _aiAircraft[i].speed);
+                    createTagBitmap(&moreTag);
+                    al_draw_bitmap(moreTag.tag.bmp, pos.x + 1 + iconData.halfHeight * _aircraft.scale, pos.y + _aiAircraft[i].tagData.tag.height / 2.0, 0);
+                    al_destroy_bitmap(moreTag.tag.bmp);
+                }
+            }
+        }
+    }
+
+    // Draw fixed objects, e.g. airports and waypoints
+    for (int i = 0; i < _aiFixedCount; i++) {
+        // Don't draw if outside the display
+        if (drawOther(&displayPos1, &displayPos2, &_aiFixed[i].loc, &pos)) {
+            ALLEGRO_BITMAP* bmp;
+            int halfWidth = _aircraft.smallHalfWidth / 2;
+            int halfHeight = _aircraft.smallHalfHeight / 2;
+            int tagShift = 1 + halfWidth * 1.5;
+
+            if (strcmp(_aiFixed[i].model, "AIRP") == 0) {
+                bmp = _aircraft.airportBmp;
+            }
+            else if (strcmp(_aiFixed[i].model, "WAYP") == 0) {
+                bmp = _aircraft.waypointBmp;
+                tagShift += halfWidth;
+            }
+            else {
+                return;
+            }
+
+            al_draw_scaled_rotated_bitmap(bmp, halfWidth, halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _aiFixed[i].heading * DegreesToRadians, 0);
+
+            if (_showTags) {
+                if (_aiFixed[i].tagData.tag.bmp == NULL) {
+                    createTagBitmap(&_aiFixed[i].tagData);
+                }
+
+                // Draw tag to right
+                al_draw_bitmap(_aiFixed[i].tagData.tag.bmp, pos.x + tagShift * _aircraft.scale, pos.y - _aiFixed[i].tagData.tag.height / 4, 0);
             }
         }
     }
@@ -1112,6 +1344,9 @@ void render()
     // Draw other aircraft
     drawOtherAircraft();
 
+    // Draw fixed objects (if injected), e.g. airports and waypoints
+    drawAiObjects();
+
     // Draw aircraft
     drawOwnAircraft();
 
@@ -1126,7 +1361,7 @@ void render()
         for (int i = 0; i < _chartData.state; i++) {
             int x = _chartData.x[i] * _view.scale - destX;
             int y = _chartData.y[i] * _view.scale - destY;
-            al_draw_scaled_bitmap(_marker.bmp, 0, 0, _marker.width, _marker.height, x - width / 2, y - height / 2, width, height, 0);
+            al_draw_scaled_bitmap(_marker.bmp, 0, 0, _marker.width, _marker.height, x - width / 2, y - height / 2.0, width, height, 0);
         }
     }
 
@@ -1139,7 +1374,7 @@ void render()
 
             int x = _clickedPos.x * _view.scale - destX;
             int y = _clickedPos.y * _view.scale - destY;
-            al_draw_scaled_bitmap(_marker.bmp, 0, 0, _marker.width, _marker.height, x - width / 2, y - height / 2, width, height, 0);
+            al_draw_scaled_bitmap(_marker.bmp, 0, 0, _marker.width, _marker.height, x - width / 2, y - height / 2.0, width, height, 0);
         }
 
         if (_clipboardPos.x != -1) {
@@ -1149,15 +1384,17 @@ void render()
 
             int x = _clipboardPos.x * _view.scale - destX;
             int y = _clipboardPos.y * _view.scale - destY;
-            al_draw_scaled_bitmap(_ring.bmp, 0, 0, _ring.width, _ring.height, x - width / 2, y - height / 2, width, height, 0);
+            al_draw_scaled_bitmap(_ring.bmp, 0, 0, _ring.width, _ring.height, x - width / 2, y - height / 2.0, width, height, 0);
         }
     }
 
-    // Draw wind at top centre of display
-    int x = _displayWidth / 2;
-    int y = 40;
-    al_draw_scaled_rotated_bitmap(_arrow.bmp, _arrow.x, _arrow.y, x, y, 0.15, 0.2, (180 + _windDirection) * DegreesToRadians, 0);
-    al_draw_bitmap_region(_windInfoCopy.bmp, 0, 0, _windInfoCopy.width, _windInfo.height, x + 26, y - _windInfo.height / 2, 0);
+    if (_windDirection != -1) {
+        // Draw wind at top centre of display
+        int x = _displayWidth / 2;
+        int y = 40;
+        al_draw_scaled_rotated_bitmap(_arrow.bmp, _arrow.x, _arrow.y, x, y, 0.15, 0.2, (180 + _windDirection) * DegreesToRadians, 0);
+        al_draw_bitmap_region(_windInfoCopy.bmp, 0, 0, _windInfoCopy.width, _windInfo.height, x + 26, y - _windInfo.height / 2.0, 0);
+    }
 }
 
 /// <summary>
@@ -1395,6 +1632,10 @@ void updateOtherTags()
 
 void updateWind()
 {
+    if (_windDirection == -1) {
+        return;
+    }
+
     int windDirection = _windData.direction + 0.5;
     int windSpeed = _windData.speed + 0.5;
 
@@ -1524,7 +1765,7 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
                 displayToChartPos(_mouse.x, _mouse.y, &_clickedPos);
                 chartPosToLocation(_clickedPos.x, _clickedPos.y, &_clickedLoc);
 
-                Location loc;
+                Locn loc;
                 getClipboardLocation(&loc);
                 locationToChartPos(&loc, &_clipboardPos);
 
@@ -1547,7 +1788,7 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
             // Right mouse button pressed
             if (_chartData.state == 0 || _chartData.state == 1) {
                 _teleport.pos.x = MAXINT;
-                Location loc;
+                Locn loc;
                 getClipboardLocation(&loc);
                 if (loc.lat == MAXINT) {
                     showClipboardMessage(true);

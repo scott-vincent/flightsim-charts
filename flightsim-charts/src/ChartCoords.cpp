@@ -56,7 +56,7 @@ void chartToDisplayPos(int chartX, int chartY, Position* display)
 /// <summary>
 /// Convert location to chart position. Chart must be calibrated.
 /// </summary>
-void locationToChartPos(Location* loc, Position* pos)
+void locationToChartPos(Locn* loc, Position* pos)
 {
     double lonCalibDiff = _chartData.lon[1] - _chartData.lon[0];
     double lonDiff = loc->lon - _chartData.lon[0];
@@ -76,7 +76,7 @@ void locationToChartPos(Location* loc, Position* pos)
 /// <summary>
 /// Convert chart position to location. Chart must be calibrated.
 /// </summary>
-void chartPosToLocation(int x, int y, Location* loc)
+void chartPosToLocation(int x, int y, Locn* loc)
 {
     int xCalibDiff = _chartData.x[1] - _chartData.x[0];
     double xDiff = x - _chartData.x[0];
@@ -109,7 +109,7 @@ void coordToString(double coord, char* str)
 /// <summary>
 /// Returns formatted location, e.g. 51° 28' 29.60" N 0° 29' 5.19" W
 /// </summary>
-void locationToString(Location* loc, char* str)
+void locationToString(Locn* loc, char* str)
 {
     char latStr[32];
     char lonStr[32];
@@ -135,7 +135,7 @@ void locationToString(Location* loc, char* str)
 /// Returns the distance in nautical miles.
 /// </summary>
 /// <returns></returns>
-double greatCircleDistance(Location* loc1, Location* loc2)
+double greatCircleDistance(Locn* loc1, Locn* loc2)
 {
     double lat1r = loc1->lat * DegreesToRadians;
     double lon1r = loc1->lon * DegreesToRadians;
@@ -156,7 +156,7 @@ double greatCircleDistance(Location* loc1, Location* loc2)
 /// Calculate coordinates of new point given starting
 /// point, distance and heading.
 /// </summary>
-void greatCirclePos(Location* loc, double headingTrue, double distanceNm)
+void greatCirclePos(Locn* loc, double headingTrue, double distanceNm)
 {
     double lat1r = loc->lat * DegreesToRadians;
     double lon1r = loc->lon * DegreesToRadians;
@@ -374,7 +374,7 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
     }
 
     // Calculate how far off the display the aircraft is in nm.
-    Location intersectLoc;
+    Locn intersectLoc;
     chartPosToLocation(adjustedPos->x, adjustedPos->y, &intersectLoc);
     double distance = greatCircleDistance(&intersectLoc, &_aircraftData.loc);
 
@@ -394,7 +394,7 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
     }
 }
 
-bool drawOtherAircraft(Position* displayPos1, Position* displayPos2, Location* loc, Position* pos)
+bool drawOther(Position* displayPos1, Position* displayPos2, Locn* loc, Position* pos)
 {
     Position chartPos;
     locationToChartPos(loc, &chartPos);
@@ -410,7 +410,7 @@ bool drawOtherAircraft(Position* displayPos1, Position* displayPos2, Location* l
     return true;
 }
 
-CalibratedData* findClosestChart(CalibratedData* calib, int count, Location* loc)
+CalibratedData* findClosestChart(CalibratedData* calib, int count, Locn* loc)
 {
     CalibratedData* closest = calib;
     double minDistance = MAXINT;
@@ -421,7 +421,7 @@ CalibratedData* findClosestChart(CalibratedData* calib, int count, Location* loc
 
         // Ignore any bad calibration data
         if (nextCalib->data.state == 2) {
-            Location centre;
+            Locn centre;
             centre.lat = (nextCalib->data.lat[0] + nextCalib->data.lat[1]) / 2.0;
             centre.lon = (nextCalib->data.lon[0] + nextCalib->data.lon[1]) / 2.0;
 

@@ -153,7 +153,7 @@ void loadSettings()
 /// <summary>
 /// Add position to config and save/update chart calibration file
 /// </summary>
-void saveCalibration(int x, int y, Location* loc)
+void saveCalibration(int x, int y, Locn* loc)
 {
     Position chartPos;
     displayToChartPos(x, y, &chartPos);
@@ -297,7 +297,7 @@ bool fileSelectorDialog(HWND displayHwnd)
 /// Reads coordinates from clipboard. Clipboard can be from Little Navmap, Google Maps or OpenStreetMap.
 /// Returns MAXINT if no valid location found.
 /// </summary>
-void getClipboardLocation(Location* loc)
+void getClipboardLocation(Locn* loc)
 {
     // Make sure required data is in clipboard
     char text[256];

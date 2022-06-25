@@ -3,20 +3,9 @@
 #include <thread>
 #include "flightsim-charts.h"
 #include "ChartCoords.h"
+#include "Server.h"
+#include "Listener.h"
 #include "simconnect.h"
-
-enum DEFINITION_ID {
-    DEF_SELF,
-    DEF_ALL,
-    DEF_TELEPORT,
-    DEF_SNAPSHOT
-};
-
-enum REQUEST_ID {
-    REQ_SELF,
-    REQ_ALL,
-    REQ_SNAPSHOT
-};
 
 // Externals
 extern bool _quit;
@@ -32,6 +21,7 @@ int _otherAircraftCount = 0;
 int _locDataSize = sizeof(LocData);
 int _windDataSize = sizeof(WindData);
 int _otherDataSize = sizeof(OtherData);
+int _snapshotDataSize = 7 * sizeof(double);
 bool _pendingRequest = false;
 HANDLE hSimConnect = NULL;
 bool _connected = false;
@@ -41,6 +31,16 @@ bool _maxRange = true;
 TeleportData _teleport;
 SnapshotData _snapshot;
 FollowData _follow;
+bool _listening = false;
+SOCKET _sockfd;
+SOCKET _sendSockfd;
+sockaddr_in _sendAddr;
+char* _listenerData;
+char _listenerBounds[256];
+int _aiAircraftCount = 0;
+AI_Aircraft _aiAircraft[Max_AI_Aircraft];
+int _aiFixedCount = 0;
+AI_Fixed _aiFixed[Max_AI_Fixed];
 
 
 void stopFollowing(bool force = false)
@@ -149,6 +149,12 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
             break;
         }
 
+        case REQ_AI_AIRCRAFT:
+        {
+            printf("Received AI aircraft\n");
+            break;
+        }
+
         default:
         {
             printf("SimConnect unknown request id: %ld\n", pObjData->dwRequestID);
@@ -175,6 +181,15 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
 
             memcpy(&_otherData, &pObjData->dwData, _otherDataSize);
             int i = pObjData->dwentrynumber - 1;
+
+            // Use the AI model (not matched model) if it's an AI aircraft
+            for (int j = 0; j < _aiAircraftCount; j++) {
+                if (strcmp(_otherData.callsign, _aiAircraft[j].callsign) == 0) {
+                    strcpy(_otherData.model, _aiAircraft[j].model);
+                    _aiAircraft[j].objectId = pObjData->dwObjectID;
+                    break;
+                }
+            }
 
             // Make sure followed aircraft still exists
             if (*_follow.callsign != '\0' && strcmp(_otherData.callsign, _follow.callsign) == 0) {
@@ -239,10 +254,11 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
         printf("SimConnect Quit\n");
         break;
     }
+
     }
 }
 
-void GetAllAircract() {
+void getAllAircract() {
     if (_pendingRequest || _aircraftData.loc.lat == MAXINT) {
         return;
     }
@@ -291,7 +307,7 @@ void init()
     // Rest of SNAPSHOT data after teleport
     addDataDef(DEF_SNAPSHOT, "Plane Alt Above Ground", "Feet");
     addDataDef(DEF_SNAPSHOT, "Airspeed Indicated", "Knots");
-    _snapshot.dataSize = 7 * sizeof(double);
+    _snapshot.dataSize = _snapshotDataSize;
 
     // First part of SELF must match snapshot
     addDataDef(DEF_SELF, "Plane Latitude", "Degrees");
@@ -350,6 +366,8 @@ void cleanUp()
         _quit = true;
     }
 
+    listenerCleanup();
+
     printf("Finished\n");
 }
 
@@ -371,6 +389,10 @@ void server()
 
     HRESULT result;
 
+    listenerInit();
+    *_listenerBounds = '\0';
+    bool listenerStart = true;
+
     int loopMillis = 10;
     int retryDelay = 0;
     while (!_quit)
@@ -378,7 +400,7 @@ void server()
         if (_connected) {
             result = SimConnect_CallDispatch(hSimConnect, MyDispatchProc, NULL);
             if (result == 0) {
-                GetAllAircract();
+                getAllAircract();
             }
             else {
                 printf("Disconnected from MS FS2020\n");
@@ -405,7 +427,19 @@ void server()
             }
         }
 
-        Sleep(loopMillis);
+        char request[256];
+        if (listenerStart) {
+            strcpy(request, "wayp");
+        }
+        else {
+            strcpy(request, "fr24");
+        }
+
+        if (listenerRead(request, loopMillis) && listenerStart) {
+            listenerStart = false;
+            sprintf(request, "fr24,%s", _listenerBounds);
+            listenerRead(request, 0);
+        }
     }
 
     cleanUp();

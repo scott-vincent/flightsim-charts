@@ -16,11 +16,11 @@ struct Intersect {
 
 void displayToChartPos(int x, int y, Position* pos);
 void chartToDisplayPos(int x, int y, Position* pos);
-void locationToChartPos(Location* loc, Position* pos);
-void chartPosToLocation(int x, int y, Location* loc);
-void locationToString(Location* loc, char* str);
-double greatCircleDistance(Location* loc1, Location* loc2);
+void locationToChartPos(Locn* loc, Position* pos);
+void chartPosToLocation(int x, int y, Locn* loc);
+void locationToString(Locn* loc, char* str);
+double greatCircleDistance(Locn* loc1, Locn* loc2);
 void aircraftLocToChartPos(AircraftPosition* pos);
-bool drawOtherAircraft(Position* displayPos1, Position* displayPos2, Location* loc, Position* pos);
-CalibratedData* findClosestChart(CalibratedData* calib, int count, Location* loc);
+bool drawOther(Position* displayPos1, Position* displayPos2, Locn* loc, Position* pos);
+CalibratedData* findClosestChart(CalibratedData* calib, int count, Locn* loc);
 void adjustFollowLocation(LocData* loc, double ownWingSpan);

@@ -1,0 +1,13 @@
+enum DEFINITION_ID {
+    DEF_SELF,
+    DEF_ALL,
+    DEF_TELEPORT,
+    DEF_SNAPSHOT
+};
+
+enum REQUEST_ID {
+    REQ_SELF,
+    REQ_ALL,
+    REQ_SNAPSHOT,
+    REQ_AI_AIRCRAFT
+};

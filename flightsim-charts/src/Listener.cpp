@@ -459,6 +459,7 @@ bool listenerRead(const char* request, int waitMillis)
     if (connect(_sockfd, (sockaddr*)&_sendAddr, sizeof(_sendAddr)) != 0) {
         printf("Failed to connect to %s port %d\n", _remoteIp, Port);
         closesocket(_sockfd);
+        removeStale();
         Sleep(waitMillis);
         return false;
     }
@@ -467,6 +468,7 @@ bool listenerRead(const char* request, int waitMillis)
     if (bytes <= 0) {
         printf("Failed to request remote data\n");
         closesocket(_sockfd);
+        removeStale();
         Sleep(waitMillis);
         return false;
     }

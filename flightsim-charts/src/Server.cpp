@@ -9,6 +9,8 @@
 
 // Externals
 extern bool _quit;
+extern bool _showAi;
+
 
 // Variables
 LocData _locData;
@@ -32,8 +34,8 @@ TeleportData _teleport;
 SnapshotData _snapshot;
 FollowData _follow;
 bool _listening = false;
+char* _remoteIp;
 SOCKET _sockfd;
-SOCKET _sendSockfd;
 sockaddr_in _sendAddr;
 char* _listenerData;
 char _listenerBounds[256];
@@ -41,6 +43,8 @@ int _aiAircraftCount = 0;
 AI_Aircraft _aiAircraft[Max_AI_Aircraft];
 int _aiFixedCount = 0;
 AI_Fixed _aiFixed[Max_AI_Fixed];
+int _aiModelMatchCount = 0;
+AI_ModelMatch _aiModelMatch[Max_AI_ModelMatch];
 
 
 void stopFollowing(bool force = false)
@@ -207,7 +211,8 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
                 _follow.inProgress = false;
             }
 
-            if (i < MAX_AIRCRAFT) {
+            // Exclude static aircraft
+            if (i < MAX_AIRCRAFT && strcmp(_otherData.callsign, "ASXGSA") != 0 && strcmp(_otherData.callsign, "AS-MTP2") != 0) {
                 //printf("%d: %s - lat: %f  lon: %f  heading:%f  wingSpan: %f\n", i, _locData.callsign, _locData.lat, _locData.lon, _locData.heading, _locData.wingSpan);
                 memcpy(&_newOtherAircraftData[i], &_otherData, _otherDataSize);
             }
@@ -327,6 +332,8 @@ void init()
     addDataDef(DEF_ALL, "Plane Latitude", "Degrees");
     addDataDef(DEF_ALL, "Plane Longitude", "Degrees");
     addDataDef(DEF_ALL, "Plane Heading Degrees True", "Degrees");
+    addDataDef(DEF_ALL, "Plane Alt Above Ground", "Feet");
+    addDataDef(DEF_ALL, "Airspeed Indicated", "Knots");
     addDataDef(DEF_ALL, "Wing Span", "Feet");
     addDataDef(DEF_ALL, "Atc Id", "string");
     addDataDef(DEF_ALL, "Atc Model", "string");
@@ -389,7 +396,10 @@ void server()
 
     HRESULT result;
 
-    listenerInit();
+    if (_showAi) {
+        listenerInit();
+    }
+
     *_listenerBounds = '\0';
     bool listenerStart = true;
 
@@ -427,18 +437,24 @@ void server()
             }
         }
 
-        char request[256];
-        if (listenerStart) {
-            strcpy(request, "wayp");
+        if (_showAi) {
+            char request[256];
+
+            if (listenerStart) {
+                strcpy(request, "wayp");
+            }
+            else {
+                strcpy(request, "fr24");
+            }
+
+            if (listenerRead(request, loopMillis) && listenerStart) {
+                listenerStart = false;
+                sprintf(request, "fr24,%s", _listenerBounds);
+                listenerRead(request, 0);
+            }
         }
         else {
-            strcpy(request, "fr24");
-        }
-
-        if (listenerRead(request, loopMillis) && listenerStart) {
-            listenerStart = false;
-            sprintf(request, "fr24,%s", _listenerBounds);
-            listenerRead(request, 0);
+            Sleep(loopMillis);
         }
     }
 

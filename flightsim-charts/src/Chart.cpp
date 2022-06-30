@@ -18,6 +18,7 @@ const char HelicopterOtherFile[] = "images/helicopter_other.png";
 const char GliderOtherFile[] = "images/glider_other.png";
 const char LargeOtherFile[] = "images/aircraft_large_other.png";
 const char JetOtherFile[] = "images/small_jet_other.png";
+const char TurbopropOtherFile[] = "images/turboprop_other.png";
 const char VehicleFile[] = "images/vehicle.png";
 const char AirportFile[] = "images/airport.png";
 const char WaypointFile[] = "images/waypoint.png";
@@ -294,6 +295,7 @@ void initVars()
     _aircraft.gliderOtherBmp = NULL;
     _aircraft.largeOtherBmp = NULL;
     _aircraft.jetOtherBmp = NULL;
+    _aircraft.turbopropOtherBmp = NULL;
     _aircraft.vehicleBmp = NULL;
     _aircraft.airportBmp = NULL;
     _aircraft.waypointBmp = NULL;
@@ -780,6 +782,7 @@ void cleanup()
     cleanupBitmap(_aircraft.vehicleBmp);
     cleanupBitmap(_aircraft.largeOtherBmp);
     cleanupBitmap(_aircraft.jetOtherBmp);
+    cleanupBitmap(_aircraft.turbopropOtherBmp);
     cleanupBitmap(_aircraft.airportBmp);
     cleanupBitmap(_aircraft.waypointBmp);
     cleanupBitmap(_aircraftLabel.bmp);
@@ -832,7 +835,7 @@ void createTagText(char* callsign, char* model, char* tagText)
         modelStart = strrchr(model, '_');
     }
     if (!modelStart) {
-        if (strlen(model) < 6 && strcmp(model, "GRND") != 0) {
+        if (strlen(model) < 6 && strcmp(model, "GRND") != 0 && model[0] != '$') {
             sprintf(tagText, "%s %s", callsign, model);
         }
         else {
@@ -958,6 +961,14 @@ bool initAircraft()
     if (!_aircraft.jetOtherBmp) {
         char msg[256];
         sprintf(msg, "Missing file: %s\n", JetOtherFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.turbopropOtherBmp = al_load_bitmap(TurbopropOtherFile);
+    if (!_aircraft.turbopropOtherBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", TurbopropOtherFile);
         showMessage(msg, true);
         return false;
     }
@@ -1138,7 +1149,14 @@ void getIconData(char *model, IconData* iconData, int wingSpan)
     iconData->halfHeight = _aircraft.smallHalfHeight;
 
     if (strlen(model) > 5) {
-        iconData->bmp = _aircraft.smallOtherBmp;
+        if (wingSpan <= WINGSPAN_SMALL) {
+            iconData->bmp = _aircraft.smallOtherBmp;
+            return;
+        }
+
+        iconData->halfWidth = _aircraft.smallHalfWidth;
+        iconData->halfHeight = _aircraft.smallHalfHeight;
+        iconData->bmp = _aircraft.otherBmp;
         return;
     }
 
@@ -1157,6 +1175,11 @@ void getIconData(char *model, IconData* iconData, int wingSpan)
 
     if (strstr(Helis, prefix) != NULL) {
         iconData->bmp = _aircraft.helicopterOtherBmp;
+        return;
+    }
+
+    if (strstr(Turboprops, prefix) != NULL) {
+        iconData->bmp = _aircraft.turbopropOtherBmp;
         return;
     }
 
@@ -1216,6 +1239,7 @@ void drawOtherAircraft()
     }
 
     Position pos;
+    TagData moreTag;
     for (int i = 0; i < _otherAircraftCount; i++) {
         // Exclude self
         if (strcmp(_tagText, _otherTag[i].tagText) == 0) {
@@ -1228,13 +1252,21 @@ void drawOtherAircraft()
         // Don't draw other aircraft if outside the display
         if (drawOther(&displayPos1, &displayPos2, &_otherAircraftData[i].loc, &pos)) {
             IconData iconData;
-            getIconData(_aiAircraft[i].model, &iconData, _otherAircraftData[i].wingSpan);
+            getIconData(_otherAircraftData[i].model, &iconData, _otherAircraftData[i].wingSpan);
 
             al_draw_scaled_rotated_bitmap(iconData.bmp, iconData.halfWidth, iconData.halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _otherAircraftData[i].heading * DegreesToRadians, 0);
 
-            if (_otherTag[i].tag.bmp != NULL && _showTags) {
-                // Draw tag to right of aircraft
-                al_draw_bitmap(_otherTag[i].tag.bmp, pos.x + 1 + iconData.halfHeight * _aircraft.scale, pos.y - _otherTag[i].tag.height / 2.0, 0);
+            if (_showTags) {
+                if (_otherTag[i].tag.bmp != NULL) {
+                    // Draw tag to right of aircraft
+                    al_draw_bitmap(_otherTag[i].tag.bmp, pos.x + 1 + iconData.halfHeight * 1.5 * _aircraft.scale, pos.y - _otherTag[i].tag.height / 2.0, 0);
+                }
+
+                // Add a second tag with alt and speed
+                sprintf(moreTag.tagText, "%.0lf %.0lf", _otherAircraftData[i].alt, _otherAircraftData[i].speed);
+                createTagBitmap(&moreTag);
+                al_draw_bitmap(moreTag.tag.bmp, pos.x + 1 + iconData.halfHeight * 1.5 * _aircraft.scale, pos.y + _otherTag[i].tag.height / 2.0, 0);
+                al_destroy_bitmap(moreTag.tag.bmp);
             }
         }
     }
@@ -1260,10 +1292,10 @@ void drawAiObjects()
     displayPos2.y += border;
 
     if (_view.scale > 0.2) {
-        _aircraft.scale = 0.12;
+        _aircraft.scale = 0.16;
     }
     else {
-        _aircraft.scale = 0.09;
+        _aircraft.scale = 0.11;
     }
 
     Position pos;

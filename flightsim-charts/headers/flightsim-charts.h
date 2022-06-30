@@ -12,9 +12,10 @@ const char DefaultChart[] = "Airport Charts\\EG\\LL\\EGLL Heathrow.png";
 const int DefaultFPS = 8;
 const char DegreesSymbol[] = "\xC2\xB0";
 const char Helis[] = "_A10_A16_A18_AS5_B06_B50_B17_EC3_EC5_R44_R66_WAS_";
-const char Airliners[] = "_A20_A21_A31_A32_A33_BCS_B38_B73_B75_B76_";
+const char Airliners[] = "_A20_A21_A31_A32_A33_BCS_B38_B73_B75_B76_E19_E29_E75_";
 const char Large_Airliners[] = "_A34_A35_A38_B74_B77_B78_";
-const char Jets[] = "_C55_C56_C68_CL6_E55_F90_";
+const char Jets[] = "_C55_C56_C68_CL6_E35_E55_F90_F2T_GL5_GLF_LJ3_LJ7_";
+const char Turboprops[] = "_DH8_";
 
 struct Position {
     int x;
@@ -49,6 +50,7 @@ struct AircraftDrawData {
     ALLEGRO_BITMAP* gliderOtherBmp;
     ALLEGRO_BITMAP* largeOtherBmp;
     ALLEGRO_BITMAP* jetOtherBmp;
+    ALLEGRO_BITMAP* turbopropOtherBmp;
     ALLEGRO_BITMAP* vehicleBmp;
     ALLEGRO_BITMAP* airportBmp;
     ALLEGRO_BITMAP* waypointBmp;
@@ -84,6 +86,8 @@ struct WindData {
 struct OtherData {
     Locn loc;
     double heading;
+    double alt;
+    double speed;
     double wingSpan;
     char callsign[32];
     char model[32];
@@ -187,8 +191,15 @@ struct AI_Fixed {
     TagData tagData;
 };
 
+struct AI_ModelMatch {
+    char prefix[6];
+    char model[4];
+    char* modelNames;
+};
+
 const int Max_AI_Aircraft = 5000;
 const int Max_AI_Fixed = 500;
+const int Max_AI_ModelMatch = 25000;
 
 // Prototypes
 int showMessage(const char* message, bool isError, const char* title = NULL, bool canCancel = false);

@@ -311,16 +311,21 @@ void removeStale(bool force = false)
             i++;
         }
     }
+
+    if (_aiAircraftCount == 0) {
+        _aiTrail.count = 0;
+    }
 }
 
 void removeFixed()
 {
-    int i = 0;
-    for (; i < _aiFixedCount; i++) {
+    int i = _aiFixedCount - 1;
+    while (i >= 0) {
         _aiFixedCount--;
         ALLEGRO_BITMAP *bmp = _aiFixed[i].tagData.tag.bmp;
         _aiFixed[i].tagData.tag.bmp = NULL;
         cleanupBitmap(bmp);
+        i--;
     }
 }
 
@@ -378,6 +383,8 @@ bool getTrail(char *line)
 
 void processData(char *data)
 {
+    bool gotTrail = false;
+
     while (*data != '\0') {
         char* line = data;
         char* endLine = strchr(line, '\n');
@@ -388,7 +395,7 @@ void processData(char *data)
         data += strlen(line) + 1;
 
         if (line[0] == '!') {
-            getTrail(line);
+            gotTrail = getTrail(line);
             continue;
         }
 
@@ -476,6 +483,10 @@ void processData(char *data)
             }
         }
     }
+
+    if (!gotTrail) {
+        _aiTrail.count = 0;
+    }
 }
 
 /// <summary>
@@ -525,7 +536,7 @@ bool listenerRead(const char* request, int waitMillis, bool immediate)
     }
 
     // Wait for data
-    int timeout = 500;
+    int timeout = 1000;
     setsockopt(_sockfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(int));
 
     bool success = false;
@@ -555,18 +566,21 @@ bool listenerRead(const char* request, int waitMillis, bool immediate)
                 printf("%s\n", data);
             }
             if (strncmp(data, "# Clear,", 8) == 0) {
-                if (strncmp(&data[8], "all", 3) == 0) {
+                if (strncmp(&data[8], "all", 3) == 0 || strncmp(&data[8], "home", 4) == 0) {
                     removeStale(true);
                 }
                 removeFixed();
-                _listenerInitFetch = true;
+                
+                if (strncmp(&data[8], "all", 3) == 0 || strncmp(&data[8], "wayp", 4) == 0) {
+                    _listenerInitFetch = true;
+                }
             }
         }
         else {
             processData(data);
         }
 
-        if (data[0] == '#' || strncmp(request, "fr24", 4) != 0) {
+        if (strncmp(request, "fr24", 4) != 0) {
             // Don't wait before sending next request
             lastRequest = 0;
         }

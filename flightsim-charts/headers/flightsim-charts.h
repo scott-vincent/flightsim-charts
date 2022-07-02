@@ -201,8 +201,8 @@ struct AI_ModelMatch {
 
 struct AI_Trail {
     char callsign[16];
-    char airline[32];
-    char modelType[32];
+    char airline[64];
+    char modelType[64];
     char image[256];
     char fromAirport[128];
     char toAirport[128];

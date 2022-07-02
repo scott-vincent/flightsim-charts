@@ -329,7 +329,7 @@ bool getTrail(char *line)
     static char lastImage[256] = "";
     const int headerCols = 6;
 
-    int cols = sscanf(line, "!%15[^!]!%31[^!]!%31[^!]!%255[^!]!%127[^!]!%127[^!]!",
+    int cols = sscanf(line, "!%15[^!]!%63[^!]!%63[^!]!%255[^!]!%127[^!]!%127[^!]!",
         _aiTrail.callsign, _aiTrail.airline, _aiTrail.modelType, _aiTrail.image, _aiTrail.fromAirport, _aiTrail.toAirport);
 
     if (cols != headerCols) {

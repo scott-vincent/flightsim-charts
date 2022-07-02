@@ -83,6 +83,7 @@
     <LibraryPath>C:\Users\scott\VisualStudio_cpp\flightsim-charts\packages\curl.7.30.0.2\build\native\lib\v110\x64\Release\dynamic;$(LibraryPath)</LibraryPath>
     <Allegro_AddonImage>true</Allegro_AddonImage>
     <Allegro_AddonFont>true</Allegro_AddonFont>
+    <Allegro_AddonPrimitives>true</Allegro_AddonPrimitives>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -93,6 +94,7 @@
     <LibraryPath>C:\Users\scott\VisualStudio_cpp\flightsim-charts\packages\curl.7.30.0.2\build\native\lib\v110\x64\Release\dynamic;$(LibraryPath)</LibraryPath>
     <Allegro_AddonImage>true</Allegro_AddonImage>
     <Allegro_AddonFont>true</Allegro_AddonFont>
+    <Allegro_AddonPrimitives>true</Allegro_AddonPrimitives>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
@@ -103,6 +105,7 @@
     <LibraryPath>C:\Users\scott\VisualStudio_cpp\flightsim-charts\packages\curl.7.30.0.2\build\native\lib\v110\x64\Release\dynamic;$(LibraryPath)</LibraryPath>
     <Allegro_AddonImage>true</Allegro_AddonImage>
     <Allegro_AddonFont>true</Allegro_AddonFont>
+    <Allegro_AddonPrimitives>true</Allegro_AddonPrimitives>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
@@ -113,6 +116,7 @@
     <LibraryPath>C:\Users\scott\VisualStudio_cpp\flightsim-charts\packages\curl.7.30.0.2\build\native\lib\v110\x64\Release\dynamic;$(LibraryPath)</LibraryPath>
     <Allegro_AddonImage>true</Allegro_AddonImage>
     <Allegro_AddonFont>true</Allegro_AddonFont>
+    <Allegro_AddonPrimitives>true</Allegro_AddonPrimitives>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

@@ -38,13 +38,17 @@ char* _remoteIp;
 SOCKET _sockfd;
 sockaddr_in _sendAddr;
 char* _listenerData;
-char _listenerBounds[256];
+char* _listenerHome;
+bool _listenerInitFetch = false;
 int _aiAircraftCount = 0;
 AI_Aircraft _aiAircraft[Max_AI_Aircraft];
 int _aiFixedCount = 0;
 AI_Fixed _aiFixed[Max_AI_Fixed];
 int _aiModelMatchCount = 0;
 AI_ModelMatch _aiModelMatch[Max_AI_ModelMatch];
+AI_Trail _aiTrail;
+char _watchCallsign[16];
+bool _watchInProgress = false;
 
 
 void stopFollowing(bool force = false)
@@ -400,9 +404,6 @@ void server()
         listenerInit();
     }
 
-    *_listenerBounds = '\0';
-    bool listenerStart = true;
-
     int loopMillis = 10;
     int retryDelay = 0;
     while (!_quit)
@@ -439,18 +440,37 @@ void server()
 
         if (_showAi) {
             char request[256];
+            bool immediate = false;
 
-            if (listenerStart) {
-                strcpy(request, "wayp");
+            if (_watchInProgress) {
+                sprintf(request, "watch,%s", _watchCallsign);
+                immediate = true;
+            }
+            else if (_listenerInitFetch) {
+                if (_listenerHome) {
+                    sprintf(request, "home,%s", _listenerHome);
+                }
+                else {
+                    strcpy(request, "wayp");
+                }
+                immediate = true;
             }
             else {
                 strcpy(request, "fr24");
             }
 
-            if (listenerRead(request, loopMillis) && listenerStart) {
-                listenerStart = false;
-                sprintf(request, "fr24,%s", _listenerBounds);
-                listenerRead(request, 0);
+            if (listenerRead(request, loopMillis, immediate) && _listenerInitFetch) {
+                if (_listenerHome) {
+                    _listenerHome = NULL;
+                }
+                else if (strcmp(request, "wayp") == 0) {
+                    _listenerInitFetch = false;
+                }
+            }
+
+            // Don't retry a watch. User must click again.
+            if (strncmp(request, "watch", 5) == 0) {
+                _watchInProgress = false;
             }
         }
         else {

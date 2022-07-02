@@ -24,7 +24,8 @@ extern char* _remoteIp;
 extern SOCKET _sockfd;
 extern sockaddr_in _sendAddr;
 extern char* _listenerData;
-extern char _listenerBounds[256];
+extern char* _listenerHome;
+extern bool _listenerInitFetch;
 extern int _snapshotDataSize;
 extern int _aiAircraftCount;
 extern AI_Aircraft _aiAircraft[Max_AI_Aircraft];
@@ -32,6 +33,8 @@ extern int _aiFixedCount;
 extern AI_Fixed _aiFixed[Max_AI_Fixed];
 extern int _aiModelMatchCount;
 extern AI_ModelMatch _aiModelMatch[Max_AI_ModelMatch];
+extern AI_Trail _aiTrail;
+extern bool _showAiPhotos;
 
 
 void getModelMatch(const char* modelMatchFile)
@@ -139,8 +142,12 @@ void listenerInit()
         printf("No fr24server\n");
         return;
     }
-
     printf("fr24server: %s\n", _remoteIp);
+
+    _listenerHome = getenv("fr24home");
+    if (_listenerHome) {
+        printf("fr24home: %s\n", _listenerHome);
+    }
 
     char* modelMatchFile = getenv("fr24modelmatch");
     if (modelMatchFile) {
@@ -162,11 +169,11 @@ void listenerInit()
     _listenerData = (char*)malloc(MaxDataSize);
     if (_listenerData == NULL) {
         printf("Listener failed to allocate memory");
-        closesocket(_sockfd);
         return;
     }
 
     _listening = true;
+    _listenerInitFetch = true;
 }
 
 void listenerCleanup()
@@ -277,11 +284,100 @@ SIMCONNECT_DATA_INITPOSITION getAircraftPos(AI_Aircraft aircraft)
     return pos;
 }
 
-void processData()
+void removeStale(bool force = false)
 {
-    // Only need to add fixed once as the same data is sent every time
-    char* data = _listenerData;
+    // Delete stale aircraft (no update in the last 30 seconds)
+    time_t now;
+    time(&now);
 
+    int i = 0;
+    while (i < _aiAircraftCount) {
+        if (force || now - _aiAircraft[i].lastUpdated > StaleSecs) {
+            // Remove aircraft
+            _aiAircraftCount--;
+            cleanupBitmap(_aiAircraft[i].tagData.tag.bmp);
+
+            if (_aiAircraft[i].objectId != -1) {
+                if (SimConnect_AIRemoveObject(hSimConnect, _aiAircraft[i].objectId, REQ_AI_AIRCRAFT) != 0) {
+                    printf("Failed to remove AI aircraft: %s\n", _aiAircraft[i].callsign);
+                }
+            }
+
+            if (i < _aiAircraftCount) {
+                memcpy(&_aiAircraft[i], &_aiAircraft[i + 1], sizeof(AI_Aircraft) * (_aiAircraftCount - i));
+            }
+        }
+        else {
+            i++;
+        }
+    }
+}
+
+void removeFixed()
+{
+    int i = 0;
+    for (; i < _aiFixedCount; i++) {
+        _aiFixedCount--;
+        ALLEGRO_BITMAP *bmp = _aiFixed[i].tagData.tag.bmp;
+        _aiFixed[i].tagData.tag.bmp = NULL;
+        cleanupBitmap(bmp);
+    }
+}
+
+bool getTrail(char *line)
+{
+    static char lastImage[256] = "";
+    const int headerCols = 6;
+
+    int cols = sscanf(line, "!%15[^!]!%31[^!]!%31[^!]!%255[^!]!%127[^!]!%127[^!]!",
+        _aiTrail.callsign, _aiTrail.airline, _aiTrail.modelType, _aiTrail.image, _aiTrail.fromAirport, _aiTrail.toAirport);
+
+    if (cols != headerCols) {
+        printf("Listener bad trail data ignored: %s (%d)\n", line, cols);
+        return false;
+    }
+
+    int pos = 1;
+    int col = 0;
+    int i = 0;
+    bool isLat = true;
+
+    while (line[pos] != '\0') {
+        if (line[pos] == '!') {
+            pos++;
+            col++;
+
+            if (col >= headerCols) {
+                if (isLat) {
+                    _aiTrail.loc[i].lat = atof(&line[pos]);
+                }
+                else {
+                    _aiTrail.loc[i].lon = atof(&line[pos]);
+                    i++;
+                }
+                isLat = !isLat;
+            }
+        }
+        else {
+            pos++;
+        }
+    }
+
+    _aiTrail.count = i;
+
+    if (strcmp(lastImage, _aiTrail.image) != 0) {
+        strcpy(lastImage, _aiTrail.image);
+        if (_showAiPhotos && strcmp(lastImage, "None") != 0) {
+            // Launch a browser to view the aircraft image
+            ShellExecute(0, 0, lastImage, 0, 0, SW_SHOW);
+        }
+    }
+
+    return true;
+}
+
+void processData(char *data)
+{
     while (*data != '\0') {
         char* line = data;
         char* endLine = strchr(line, '\n');
@@ -290,6 +386,11 @@ void processData()
         }
         *endLine = '\0';
         data += strlen(line) + 1;
+
+        if (line[0] == '!') {
+            getTrail(line);
+            continue;
+        }
 
         AI_Aircraft ai;
         int cols = sscanf(line, "%15[^,],%15[^,],%15[^,],%lf,%lf,%lf,%lf,%lf",
@@ -306,48 +407,24 @@ void processData()
             ai.bank = 0;
             ai.pitch = 0;
 
-            if (strcmp(ai.model, "AIRP") == 0 || strcmp(ai.model, "WAYP") == 0) {
-                if (strcmp(ai.callsign, "Home") == 0) {
-                    char* home = getenv("fr24home");
-                    if (home) {
-                        double lat, lon;
-                        cols = sscanf(home, "%lf,%lf", &lat, &lon);
-                        if (cols == 2) {
-                            ai.loc.lat = lat;
-                            ai.loc.lon = lon;
-                        }
-                    }
-                    printf("fr24home: %lf.%lf\n", ai.loc.lat, ai.loc.lon);
-
-                    // Change bounds when home changed
-                    char* bounds = getenv("fr24bounds");
-                    if (bounds) {
-                        strcpy(_listenerBounds, bounds);
-                    }
-                    else {
-                        sprintf(_listenerBounds, "%lf,%lf,%lf,%lf",
-                            ai.loc.lat + 1.4, ai.loc.lat - 1.4, ai.loc.lon - 3.2, ai.loc.lon + 3.2);
-                    }
-                    printf("fr24bounds: %s\n", _listenerBounds);
-                }
-
+            if (strcmp(ai.model, "AIRP") == 0 || strcmp(ai.model, "WAYP") == 0 || strcmp(ai.model, "SRCH") == 0) {
                 int i = 0;
                 for (; i < _aiFixedCount; i++) {
                     if (strcmp(ai.callsign, _aiFixed[i].tagData.tagText) == 0) {
                         // Update waypoint
-                        memcpy(&_aiFixed[_aiFixedCount], &ai, _snapshotDataSize);
-                        strcpy(_aiFixed[_aiFixedCount].model, ai.model);
+                        memcpy(&_aiFixed[i], &ai, _snapshotDataSize);
+                        strcpy(_aiFixed[i].model, ai.model);
                         break;
                     }
                 }
 
                 if (i == _aiFixedCount && _aiFixedCount < Max_AI_Fixed) {
                     // Create waypoint
-                    memcpy(&_aiFixed[_aiFixedCount], &ai, _snapshotDataSize);
-                    strcpy(_aiFixed[_aiFixedCount].tagData.tagText, ai.callsign);
-                    strcpy(_aiFixed[_aiFixedCount].model, ai.model);
+                    memcpy(&_aiFixed[i], &ai, _snapshotDataSize);
+                    strcpy(_aiFixed[i].tagData.tagText, ai.callsign);
+                    strcpy(_aiFixed[i].model, ai.model);
                     // Tag will be created later by single-threaded drawing thread
-                    _aiFixed[_aiFixedCount].tagData.tag.bmp = NULL;
+                    _aiFixed[i].tagData.tag.bmp = NULL;
                     _aiFixedCount++;
                 }
             }
@@ -401,36 +478,11 @@ void processData()
     }
 }
 
-void removeStale()
-{
-    // Delete stale aircraft (no update in the last 30 seconds)
-    time_t now;
-    time(&now);
-
-    for (int i = 0; i < _aiAircraftCount; i++) {
-        if (now - _aiAircraft[i].lastUpdated > StaleSecs) {
-            // Remove aircraft
-            cleanupBitmap(_aiAircraft[i].tagData.tag.bmp);
-
-            if (_aiAircraft[i].objectId != -1) {
-                if (SimConnect_AIRemoveObject(hSimConnect, _aiAircraft[i].objectId, REQ_AI_AIRCRAFT) != 0) {
-                    printf("Failed to remove AI aircraft: %s\n", _aiAircraft[i].callsign);
-                }
-            }
-
-            if (i < _aiAircraftCount - 1) {
-                memcpy(&_aiAircraft[i], &_aiAircraft[i + 1], sizeof(AI_Aircraft) * (_aiAircraftCount - i));
-            }
-            _aiAircraftCount--;
-        }
-    }
-}
-
 /// <summary>
 /// If there is any data on the port, read and process it.
 /// 
 /// </summary>
-bool listenerRead(const char* request, int waitMillis)
+bool listenerRead(const char* request, int waitMillis, bool immediate)
 {
     static time_t lastRequest = 0;
 
@@ -442,7 +494,7 @@ bool listenerRead(const char* request, int waitMillis)
     time_t now;
     time(&now);
 
-    if (waitMillis > 0 && now - lastRequest < IntervalSecs) {
+    if (!immediate && now - lastRequest < IntervalSecs) {
         Sleep(waitMillis);
         return false;
     }
@@ -452,14 +504,13 @@ bool listenerRead(const char* request, int waitMillis)
     // Request data from remote server using a TCP socket
     if ((_sockfd = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET) {
         printf("Listener failed to create TCP socket\n");
-        closesocket(_sockfd);
         return false;
     }
-
+    
     if (connect(_sockfd, (sockaddr*)&_sendAddr, sizeof(_sendAddr)) != 0) {
         printf("Failed to connect to %s port %d\n", _remoteIp, Port);
         closesocket(_sockfd);
-        removeStale();
+        removeStale(true);
         Sleep(waitMillis);
         return false;
     }
@@ -468,19 +519,63 @@ bool listenerRead(const char* request, int waitMillis)
     if (bytes <= 0) {
         printf("Failed to request remote data\n");
         closesocket(_sockfd);
-        removeStale();
+        removeStale(true);
         Sleep(waitMillis);
         return false;
     }
 
     // Wait for data
+    int timeout = 500;
+    setsockopt(_sockfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(int));
+
     bool success = false;
     bytes = recv(_sockfd, _listenerData, MaxDataSize - 1, 0);
     if (bytes > 0) {
+        int expected = atoi(_listenerData);
+        char *data = strchr(_listenerData, '\n') + 1;
+        int header = data - _listenerData;
+
+        while (bytes - header < expected) {
+            // Wait for more data
+            int moreBytes = recv(_sockfd, &_listenerData[bytes], MaxDataSize - bytes, 0);
+            if (moreBytes > 0) {
+                bytes += moreBytes;
+            }
+            else {
+                printf("Timeout receiving more remote data\n");
+                return false;
+            }
+        }
+
         // printf("Received %ld bytes from %s\n", bytes, _remoteIp);
         _listenerData[bytes] = '\0';
-        processData();
+
+        if (data[0] == '#') {
+            if (strlen(data) > 1) {
+                printf("%s\n", data);
+            }
+            if (strncmp(data, "# Clear,", 8) == 0) {
+                if (strncmp(&data[8], "all", 3) == 0) {
+                    removeStale(true);
+                }
+                removeFixed();
+                _listenerInitFetch = true;
+            }
+        }
+        else {
+            processData(data);
+        }
+
+        if (data[0] == '#' || strncmp(request, "fr24", 4) != 0) {
+            // Don't wait before sending next request
+            lastRequest = 0;
+        }
+
         success = true;
+    }
+    else {
+        printf("Timeout receiving remote data\n");
+        removeStale();
     }
 
     closesocket(_sockfd);

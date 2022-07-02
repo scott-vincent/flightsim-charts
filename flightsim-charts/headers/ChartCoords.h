@@ -21,6 +21,6 @@ void chartPosToLocation(int x, int y, Locn* loc);
 void locationToString(Locn* loc, char* str);
 double greatCircleDistance(Locn* loc1, Locn* loc2);
 void aircraftLocToChartPos(AircraftPosition* pos);
-bool drawOther(Position* displayPos1, Position* displayPos2, Locn* loc, Position* pos);
+bool drawOther(Position* displayPos1, Position* displayPos2, Locn* loc, Position* pos, bool force = false);
 CalibratedData* findClosestChart(CalibratedData* calib, int count, Locn* loc);
 void adjustFollowLocation(LocData* loc, double ownWingSpan);

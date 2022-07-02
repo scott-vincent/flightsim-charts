@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <iostream>
 #include <allegro5/allegro.h>
+#include <allegro5/allegro_primitives.h>
 #include <allegro5/allegro_image.h>
 #include <allegro5/allegro_font.h>
 #include <allegro5/allegro_windows.h>
@@ -18,6 +19,7 @@ const char HelicopterOtherFile[] = "images/helicopter_other.png";
 const char GliderOtherFile[] = "images/glider_other.png";
 const char LargeOtherFile[] = "images/aircraft_large_other.png";
 const char JetOtherFile[] = "images/small_jet_other.png";
+const char MilitaryOtherFile[] = "images/military_jet_other.png";
 const char TurbopropOtherFile[] = "images/turboprop_other.png";
 const char VehicleFile[] = "images/vehicle.png";
 const char AirportFile[] = "images/airport.png";
@@ -42,11 +44,16 @@ extern SnapshotData _snapshot;
 extern FollowData _follow;
 extern int _range;
 extern bool _maxRange;
+extern bool _showAi;
 extern int _aiFixedCount;
 extern AI_Fixed _aiFixed[Max_AI_Fixed];
 extern bool _connected;
 extern int _aiAircraftCount;
 extern AI_Aircraft _aiAircraft[Max_AI_Aircraft];
+extern AI_Trail _aiTrail;
+extern char _watchCallsign[16];
+extern bool _watchInProgress;
+
 
 // Variables
 double DegreesToRadians = ALLEGRO_PI / 180.0f;
@@ -85,6 +92,7 @@ int _mouseStartZ = 0;
 int _titleState;
 int _titleDelay;
 bool _showTags = true;
+bool _showAiPhotos = true;
 bool _showCalibration = false;
 Locn _clickedLoc;
 Position _clickedPos;
@@ -95,6 +103,7 @@ int _menuItem = -1;
 int _lastRotate = MAXINT;
 char _closestAircraft[32];
 bool _menuCallback = false;
+char _aiTitle[512] = "";
 
 enum MENU_ITEMS {
     MENU_LOAD_CHART,
@@ -115,8 +124,9 @@ enum MENU_ITEMS {
     MENU_TELEPORT_FOLLOW,
     MENU_MAX_RANGE,
     MENU_SHOW_TAGS,
+    MENU_SHOW_AI_PHOTOS,
     MENU_SHOW_CALIBRATION,
-    MENU_RECALIBRATE
+    MENU_RECALIBRATE,
 };
 
 // Prototypes
@@ -210,7 +220,7 @@ void updateWindowTitle()
     const char calibrate[] = "Right-click on this chart to set POSITION";
     const char cancel[] = "or middle-click to cancel";
 
-    char title[256];
+    char title[512];
     char titleStart[256];
 
     if (*_tagText == '\0') {
@@ -242,7 +252,12 @@ void updateWindowTitle()
             *ext = '\0';
         }
 
-        sprintf(title, "%s - %s", titleStart, chart);
+        if (*_aiTitle == '\0') {
+            sprintf(title, "%s - %s", titleStart, chart);
+        }
+        else {
+            strcpy(title, _aiTitle);
+        }
     }
 
     _titleState = _chartData.state;
@@ -295,6 +310,7 @@ void initVars()
     _aircraft.gliderOtherBmp = NULL;
     _aircraft.largeOtherBmp = NULL;
     _aircraft.jetOtherBmp = NULL;
+    _aircraft.militaryOtherBmp = NULL;
     _aircraft.turbopropOtherBmp = NULL;
     _aircraft.vehicleBmp = NULL;
     _aircraft.airportBmp = NULL;
@@ -391,6 +407,11 @@ HMENU createMenu()
     AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)teleportMenu, "Teleport aircraft");
     AppendMenu(menu, MF_STRING, MENU_MAX_RANGE, "Maximum Range");
     AppendMenu(menu, MF_STRING, MENU_SHOW_TAGS, "Show tags");
+
+    if (_showAi) {
+        AppendMenu(menu, MF_STRING, MENU_SHOW_AI_PHOTOS, "Show AI photos in browser");
+    }
+
     AppendMenu(menu, MF_STRING, MENU_SHOW_CALIBRATION, "Show calibration");
     AppendMenu(menu, MF_SEPARATOR, 0, NULL);
     AppendMenu(menu, MF_STRING, MENU_RECALIBRATE, "Re-calibrate chart");
@@ -443,6 +464,12 @@ void updateMenu(HMENU menu)
     EnableMenuItem(menu, MENU_TELEPORT_FOLLOW, enabledState(active && !_follow.inProgress && *_closestAircraft != '\0'));
     EnableMenuItem(menu, MENU_MAX_RANGE, enabledState(active && calibrated));
     EnableMenuItem(menu, MENU_SHOW_TAGS, enabledState(calibrated));
+
+    if (_showAi) {
+        EnableMenuItem(menu, MENU_SHOW_AI_PHOTOS, MF_ENABLED);
+        CheckMenuItem(menu, MENU_SHOW_AI_PHOTOS, checkedState(_showAiPhotos));
+    }
+
     EnableMenuItem(menu, MENU_SHOW_CALIBRATION, enabledState(calibrated));
 
     CheckMenuItem(menu, MENU_MAX_RANGE, checkedState(_maxRange));
@@ -636,6 +663,11 @@ void actionMenuItem()
         _showTags = !_showTags;
         break;
     }
+    case MENU_SHOW_AI_PHOTOS:
+    {
+        _showAiPhotos = !_showAiPhotos;
+        break;
+    }
     case MENU_SHOW_CALIBRATION:
     {
         _showCalibration = !_showCalibration;
@@ -658,6 +690,11 @@ bool init()
 {
     if (!al_init()) {
         printf("Failed to initialise Allegro\n");
+        return false;
+    }
+
+    if (!al_init_primitives_addon()) {
+        printf("Failed to initialise primitives\n");
         return false;
     }
 
@@ -782,6 +819,7 @@ void cleanup()
     cleanupBitmap(_aircraft.vehicleBmp);
     cleanupBitmap(_aircraft.largeOtherBmp);
     cleanupBitmap(_aircraft.jetOtherBmp);
+    cleanupBitmap(_aircraft.militaryOtherBmp);
     cleanupBitmap(_aircraft.turbopropOtherBmp);
     cleanupBitmap(_aircraft.airportBmp);
     cleanupBitmap(_aircraft.waypointBmp);
@@ -799,11 +837,15 @@ void cleanup()
     }
 
     for (int i = 0; i < _aiAircraftCount; i++) {
-        cleanupBitmap(_aiAircraft[i].tagData.tag.bmp);
+        ALLEGRO_BITMAP* bmp = _aiAircraft[i].tagData.tag.bmp;
+        _aiAircraft[i].tagData.tag.bmp = NULL;
+        cleanupBitmap(bmp);
     }
 
     for (int i = 0; i < _aiFixedCount; i++) {
-        cleanupBitmap(_aiFixed[i].tagData.tag.bmp);
+        ALLEGRO_BITMAP* bmp = _aiFixed[i].tagData.tag.bmp;
+        _aiFixed[i].tagData.tag.bmp = NULL;
+        cleanupBitmap(bmp);
     }
 
     if (_timer) {
@@ -961,6 +1003,14 @@ bool initAircraft()
     if (!_aircraft.jetOtherBmp) {
         char msg[256];
         sprintf(msg, "Missing file: %s\n", JetOtherFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.militaryOtherBmp = al_load_bitmap(MilitaryOtherFile);
+    if (!_aircraft.militaryOtherBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", MilitaryOtherFile);
         showMessage(msg, true);
         return false;
     }
@@ -1201,10 +1251,15 @@ void getIconData(char *model, IconData* iconData, int wingSpan)
         return;
     }
 
+    if (strstr(Military, prefix) != NULL) {
+        iconData->bmp = _aircraft.militaryOtherBmp;
+        return;
+    }
+
     // Default
     if (wingSpan > WINGSPAN_SMALL) {
-        iconData->bmp = _aircraft.otherBmp;
-        return;
+iconData->bmp = _aircraft.otherBmp;
+return;
     }
 
     iconData->bmp = _aircraft.smallOtherBmp;
@@ -1300,6 +1355,41 @@ void drawAiObjects()
 
     Position pos;
 
+    // Draw trail first so other objects are drawn on top
+    if (_aiTrail.count > 0) {
+        // Show info in window title
+        if (strncmp(_aiTitle, _aiTrail.callsign, strlen(_aiTrail.callsign)) != 0) {
+            sprintf(_aiTitle, "%s   %s   %s", _aiTrail.callsign, _aiTrail.airline, _aiTrail.modelType);
+            if (strcmp(_aiTrail.fromAirport, "Unknown") != 0) {
+                char moreTitle[256];
+                sprintf(moreTitle, "    %s",_aiTrail.fromAirport);
+                strcat(_aiTitle, moreTitle);
+            }
+            if (strcmp(_aiTrail.toAirport, "Unknown") != 0) {
+                char moreTitle[256];
+                sprintf(moreTitle, "    %s", _aiTrail.toAirport);
+                strcat(_aiTitle, moreTitle);
+            }
+            _titleState = -2;
+        }
+
+        ALLEGRO_COLOR colour = al_map_rgb(0xb0, 0x60, 0x20);
+
+        for (int i = 1; i < _aiTrail.count; i++) {
+            Position fromPos;
+            Position toPos;
+
+            if (drawOther(&displayPos1, &displayPos2, &_aiTrail.loc[i - 1], &fromPos, true) &&
+                drawOther(&displayPos1, &displayPos2, &_aiTrail.loc[i], &toPos, true))
+            {
+                al_draw_line(fromPos.x, fromPos.y, toPos.x, toPos.y, colour, 2);
+            }
+        }
+    }
+    else {
+        *_aiTitle = '\0';
+    }
+
     // If we aren't currently connected draw the AI aircraft as they won't be injected
     if (!_connected) {
         TagData moreTag;
@@ -1333,7 +1423,7 @@ void drawAiObjects()
     // Draw fixed objects, e.g. airports and waypoints
     for (int i = 0; i < _aiFixedCount; i++) {
         // Don't draw if outside the display
-        if (drawOther(&displayPos1, &displayPos2, &_aiFixed[i].loc, &pos)) {
+        if (_aiFixed[i].loc.lat < 99 && drawOther(&displayPos1, &displayPos2, &_aiFixed[i].loc, &pos)) {
             ALLEGRO_BITMAP* bmp;
             int halfWidth = _aircraft.smallHalfWidth / 2;
             int halfHeight = _aircraft.smallHalfHeight / 2;
@@ -1346,8 +1436,14 @@ void drawAiObjects()
                 bmp = _aircraft.waypointBmp;
                 tagShift += halfWidth;
             }
+            else if (strcmp(_aiFixed[i].model, "SRCH") == 0) {
+                int width = _ring.width * _ring.scale;
+                int height = _ring.height * _ring.scale;
+                al_draw_scaled_bitmap(_ring.bmp, 0, 0, _ring.width, _ring.height, pos.x - width / 2, pos.y - height / 2.0, width, height, 0);
+                continue;
+            }
             else {
-                return;
+                continue;
             }
 
             al_draw_scaled_rotated_bitmap(bmp, halfWidth, halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _aiFixed[i].heading * DegreesToRadians, 0);
@@ -1376,8 +1472,10 @@ void render()
     // Draw other aircraft
     drawOtherAircraft();
 
-    // Draw fixed objects (if injected), e.g. airports and waypoints
-    drawAiObjects();
+    if (_showAi) {
+        // Draw fixed objects (if injected), e.g. airports and waypoints
+        drawAiObjects();
+    }
 
     // Draw aircraft
     drawOwnAircraft();
@@ -1783,11 +1881,15 @@ void doKeypress(ALLEGRO_EVENT* event)
 /// </summary>
 void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
 {
+    static Position clickedPos;
+
     al_get_mouse_state(&_mouse);
 
     if (event->mouse.button == 1) {
         if (isPress) {
             // Left mouse button pressed
+            clickedPos.x = _mouse.x;
+            clickedPos.y = _mouse.y;
             _mouseData.dragging = true;
             _mouseData.dragStartX = _mouse.x;
             _mouseData.dragStartY = _mouse.y;
@@ -1812,6 +1914,28 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
                 _chart.y += _mouseData.dragY / _view.scale;
                 _mouseData.dragX = 0;
                 _mouseData.dragY = 0;
+            }
+
+            // If mouse wasn't dragged check for click on AI aircraft
+            if (_aiAircraftCount > 0 && abs(_mouse.x - clickedPos.x) < 2 && abs( _mouse.y - clickedPos.y) < 2) {
+                Position posMin, posMax;
+                Locn locMin, locMax;
+                displayToChartPos(_mouse.x - 12, _mouse.y - 12, &posMin);
+                displayToChartPos(_mouse.x + 12, _mouse.y + 12, &posMax);
+                chartPosToLocation(posMin.x, posMax.y, &locMin);
+                chartPosToLocation(posMax.x, posMin.y, &locMax);
+
+                for (int i = 0; i < _aiAircraftCount; i++) {
+                    if (_aiAircraft[i].loc.lat >= locMin.lat && _aiAircraft[i].loc.lat <= locMax.lat &&
+                        _aiAircraft[i].loc.lon >= locMin.lon && _aiAircraft[i].loc.lon <= locMax.lon)
+                    {
+                        // AI aircraft has been clicked
+                        if (!_watchInProgress) {
+                            strcpy(_watchCallsign, _aiAircraft[i].callsign);
+                            _watchInProgress = true;
+                        }
+                    }
+                }
             }
         }
     }

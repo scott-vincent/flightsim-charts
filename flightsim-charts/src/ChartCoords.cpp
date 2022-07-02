@@ -394,15 +394,17 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
     }
 }
 
-bool drawOther(Position* displayPos1, Position* displayPos2, Locn* loc, Position* pos)
+bool drawOther(Position* displayPos1, Position* displayPos2, Locn* loc, Position* pos, bool force)
 {
     Position chartPos;
     locationToChartPos(loc, &chartPos);
 
-    if (chartPos.x < displayPos1->x || chartPos.x > displayPos2->x
-        || chartPos.y < displayPos1->y || chartPos.y > displayPos2->y)
-    {
-        return false;
+    if (!force) {
+        if (chartPos.x < displayPos1->x || chartPos.x > displayPos2->x
+            || chartPos.y < displayPos1->y || chartPos.y > displayPos2->y)
+        {
+            return false;
+        }
     }
 
     chartToDisplayPos(chartPos.x, chartPos.y, pos);

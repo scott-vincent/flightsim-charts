@@ -2,9 +2,10 @@
 #include <iostream>
 #include <thread>
 
-const char* versionString = "v1.6.3";
+const char* versionString = "v1.6.4";
 bool _quit = false;
 bool _showAi = false;
+bool _noConnect = false;
 
 void server();
 void showChart();
@@ -13,8 +14,13 @@ int main(int argc, char **argv)
 {
     printf("FlightSim Charts %s Copyright (c) 2022 Scott Vincent\n", versionString);
 
-    if (argc > 1 && _stricmp(argv[1], "showai") == 0) {
-        _showAi = true;
+    for (int i = 1; i < argc; i++) {
+        if (_stricmp(argv[i], "showai") == 0) {
+            _showAi = true;
+        }
+        if (_stricmp(argv[i], "noconnect") == 0) {
+            _noConnect = true;
+        }
     }
 
     // Start a thread to connect to FS2020 via SimConnect

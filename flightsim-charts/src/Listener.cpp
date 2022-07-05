@@ -10,9 +10,9 @@
 /// you want to display additional aircraft on the chart.
 
 const int Port = 52025;
-const int MaxDataSize = 65536;
+const int MaxDataSize = 512000;
 const int IntervalSecs = 6;
-const int StaleSecs = 20;
+const int StaleSecs = 15;
 
 const char* IFR_Default = "Airbus A320 Neo Asobo";
 const char* VFR_Default = "DA40-NG Asobo";
@@ -33,8 +33,9 @@ extern int _aiFixedCount;
 extern AI_Fixed _aiFixed[Max_AI_Fixed];
 extern int _aiModelMatchCount;
 extern AI_ModelMatch _aiModelMatch[Max_AI_ModelMatch];
-extern AI_Trail _aiTrail;
+extern AI_Trail _aiTrail[3];
 extern bool _showAiPhotos;
+extern char _lastImage[3][256];
 
 
 void getModelMatch(const char* modelMatchFile)
@@ -135,6 +136,13 @@ void getModelMatch(const char* modelMatchFile)
 
 void listenerInit()
 {
+    _aiTrail[0].count = 0;
+    _aiTrail[1].count = 0;
+    _aiTrail[2].count = 0;
+    *_lastImage[0] = '\0';
+    *_lastImage[1] = '\0';
+    *_lastImage[2] = '\0';
+
     srand(time(NULL));
 
     _remoteIp = getenv("fr24server");
@@ -303,6 +311,16 @@ void removeStale(bool force = false)
                 }
             }
 
+            if (strcmp(_aiTrail[0].callsign, _aiAircraft[i].callsign) == 0) {
+                _aiTrail[0].count = 0;
+            }
+            else if (strcmp(_aiTrail[1].callsign, _aiAircraft[i].callsign) == 0) {
+                _aiTrail[1].count = 0;
+            }
+            else if (strcmp(_aiTrail[2].callsign, _aiAircraft[i].callsign) == 0) {
+                _aiTrail[2].count = 0;
+            }
+
             if (i < _aiAircraftCount) {
                 memcpy(&_aiAircraft[i], &_aiAircraft[i + 1], sizeof(AI_Aircraft) * (_aiAircraftCount - i));
             }
@@ -310,10 +328,6 @@ void removeStale(bool force = false)
         else {
             i++;
         }
-    }
-
-    if (_aiAircraftCount == 0) {
-        _aiTrail.count = 0;
     }
 }
 
@@ -329,20 +343,29 @@ void removeFixed()
     }
 }
 
-bool getTrail(char *line)
+int getTrail(char *line)
 {
-    static char lastImage[256] = "";
     const int headerCols = 6;
 
-    int cols = sscanf(line, "!%15[^!]!%63[^!]!%63[^!]!%255[^!]!%127[^!]!%127[^!]!",
-        _aiTrail.callsign, _aiTrail.airline, _aiTrail.modelType, _aiTrail.image, _aiTrail.fromAirport, _aiTrail.toAirport);
+    if (line[0] != '!' || line[2] != '!') {
+        return -1;
+    }
+
+    int t = line[1] - '1';
+    if (t < 0 || t > 2) {
+        printf("Cannot read trail %c\n", line[1]);
+        return -1;
+    }
+
+    int cols = sscanf(&line[2], "!%15[^!]!%63[^!]!%63[^!]!%255[^!]!%127[^!]!%127[^!]!",
+        _aiTrail[t].callsign, _aiTrail[t].airline, _aiTrail[t].modelType, _aiTrail[t].image, _aiTrail[t].fromAirport, _aiTrail[t].toAirport);
 
     if (cols != headerCols) {
         printf("Listener bad trail data ignored: %s (%d)\n", line, cols);
         return false;
     }
 
-    int pos = 1;
+    int pos = 3;
     int col = 0;
     int i = 0;
     bool isLat = true;
@@ -354,10 +377,10 @@ bool getTrail(char *line)
 
             if (col >= headerCols) {
                 if (isLat) {
-                    _aiTrail.loc[i].lat = atof(&line[pos]);
+                    _aiTrail[t].loc[i].lat = atof(&line[pos]);
                 }
                 else {
-                    _aiTrail.loc[i].lon = atof(&line[pos]);
+                    _aiTrail[t].loc[i].lon = atof(&line[pos]);
                     i++;
                 }
                 isLat = !isLat;
@@ -368,22 +391,25 @@ bool getTrail(char *line)
         }
     }
 
-    _aiTrail.count = i;
+    _aiTrail[t].count = i;
 
-    if (strcmp(lastImage, _aiTrail.image) != 0) {
-        strcpy(lastImage, _aiTrail.image);
-        if (_showAiPhotos && strcmp(lastImage, "None") != 0) {
+    if (strcmp(_lastImage[t], _aiTrail[t].image) != 0) {
+        strcpy(_lastImage[t], _aiTrail[t].image);
+        if (_showAiPhotos && strcmp(_lastImage[t], "None") != 0) {
             // Launch a browser to view the aircraft image
-            ShellExecute(0, 0, lastImage, 0, 0, SW_SHOW);
+            ShellExecute(0, 0, _lastImage[t], 0, 0, SW_SHOW);
         }
     }
 
-    return true;
+    return t;
 }
 
 void processData(char *data)
 {
-    bool gotTrail = false;
+    bool gotTrail[3];
+    gotTrail[0] = false;
+    gotTrail[1] = false;
+    gotTrail[2] = false;
 
     while (*data != '\0') {
         char* line = data;
@@ -395,11 +421,15 @@ void processData(char *data)
         data += strlen(line) + 1;
 
         if (line[0] == '!') {
-            gotTrail = getTrail(line);
+            int t = getTrail(line);
+            if (t != -1) {
+                gotTrail[t] = true;
+            }
             continue;
         }
 
         AI_Aircraft ai;
+
         int cols = sscanf(line, "%15[^,],%15[^,],%15[^,],%lf,%lf,%lf,%lf,%lf",
             ai.callsign, ai.airline, ai.model, &ai.loc.lat, &ai.loc.lon, &ai.heading, &ai.alt, &ai.speed);
 
@@ -470,6 +500,7 @@ void processData(char *data)
                     createTagText(ai.callsign, ai.model, _aiAircraft[i].tagData.tagText);
                     // Tag will be created later by single-threaded drawing thread
                     _aiAircraft[i].tagData.tag.bmp = NULL;
+                    _aiAircraft[i].tagData.moreTag.bmp = NULL;
 
                     _aiAircraftCount++;
 
@@ -484,8 +515,11 @@ void processData(char *data)
         }
     }
 
-    if (!gotTrail) {
-        _aiTrail.count = 0;
+    for (int t = 0; t < 3; t++) {
+        if (!gotTrail[t]) {
+            _aiTrail[t].count = 0;
+            *_aiTrail[t].image = '\0';
+        }
     }
 }
 
@@ -546,7 +580,7 @@ bool listenerRead(const char* request, int waitMillis, bool immediate)
         char *data = strchr(_listenerData, '\n') + 1;
         int header = data - _listenerData;
 
-        while (bytes - header < expected) {
+        while (bytes - header < expected && bytes < MaxDataSize) {
             // Wait for more data
             int moreBytes = recv(_sockfd, &_listenerData[bytes], MaxDataSize - bytes, 0);
             if (moreBytes > 0) {

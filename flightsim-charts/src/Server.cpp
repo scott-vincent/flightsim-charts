@@ -10,6 +10,7 @@
 // Externals
 extern bool _quit;
 extern bool _showAi;
+extern bool _noConnect;
 
 
 // Variables
@@ -46,9 +47,10 @@ int _aiFixedCount = 0;
 AI_Fixed _aiFixed[Max_AI_Fixed];
 int _aiModelMatchCount = 0;
 AI_ModelMatch _aiModelMatch[Max_AI_ModelMatch];
-AI_Trail _aiTrail;
+AI_Trail _aiTrail[3];
 char _watchCallsign[16];
 bool _watchInProgress = false;
+char _lastImage[3][256];
 
 
 void stopFollowing(bool force = false)
@@ -215,8 +217,7 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
                 _follow.inProgress = false;
             }
 
-            // Exclude static aircraft
-            if (i < MAX_AIRCRAFT && strcmp(_otherData.callsign, "ASXGSA") != 0 && strcmp(_otherData.callsign, "AS-MTP2") != 0) {
+            if (i < MAX_AIRCRAFT) {
                 //printf("%d: %s - lat: %f  lon: %f  heading:%f  wingSpan: %f\n", i, _locData.callsign, _locData.lat, _locData.lon, _locData.heading, _locData.wingSpan);
                 memcpy(&_newOtherAircraftData[i], &_otherData, _otherDataSize);
             }
@@ -404,7 +405,7 @@ void server()
         listenerInit();
     }
 
-    int loopMillis = 10;
+    int loopMillis = 50;
     int retryDelay = 0;
     while (!_quit)
     {
@@ -425,6 +426,9 @@ void server()
         }
         else if (retryDelay > 0) {
             retryDelay--;
+        }
+        else if (_noConnect) {
+            retryDelay = 1000;
         }
         else {
             result = SimConnect_Open(&hSimConnect, "FlightSim Charts", NULL, 0, 0, 0);

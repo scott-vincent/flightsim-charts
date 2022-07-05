@@ -11,12 +11,12 @@ const int WINGSPAN_SMALL = 60;      // feet
 const char DefaultChart[] = "Airport Charts\\EG\\LL\\EGLL Heathrow.png";
 const int DefaultFPS = 8;
 const char DegreesSymbol[] = "\xC2\xB0";
-const char Helis[] = "_A10_A13_A16_A18_AS5_B06_B50_B17_EC3_EC4_EC5_EXP_R22_R44_R66_WAS_";
+const char Helis[] = "_A10_A13_A16_A18_AS5_B06_B50_B17_EC3_EC4_EC5_EXP_LYN_R22_R44_R66_WAS_";
 const char Airliners[] = "_A20_A21_A30_A31_A32_A33_BCS_B38_B73_B75_B76_E19_E29_E75_";
 const char Large_Airliners[] = "_A34_A35_A38_B74_B77_B78_";
 const char Jets[] = "_C51_C55_C56_C68_CL3_CL6_E14_E35_E55_EA5_F2T_F90_FA7_FA8_GL5_GLE_GLF_LJ3_LJ7_PC2_PRM_";
 const char Turboprops[] = "_AT7_B35_BE2_DH8_P18_SF3_";
-const char Military[] = "_HUN_";
+const char Military[] = "_HAW_HUN_";
 
 struct Position {
     int x;
@@ -98,6 +98,8 @@ struct OtherData {
 struct TagData {
     char tagText[68];
     DrawData tag;
+    char moreTagText[68];
+    DrawData moreTag;
 };
 
 struct ChartData {
@@ -217,5 +219,5 @@ const int Max_AI_ModelMatch = 25000;
 // Prototypes
 int showMessage(const char* message, bool isError, const char* title = NULL, bool canCancel = false);
 void createTagText(char* callsign, char* model, char* tagText);
-void createTagBitmap(TagData* otherTag);
+void createTagBitmap(char *tagText, DrawData* tag);
 void cleanupBitmap(ALLEGRO_BITMAP* bmp);

@@ -339,6 +339,9 @@ void removeFixed()
         ALLEGRO_BITMAP *bmp = _aiFixed[i].tagData.tag.bmp;
         _aiFixed[i].tagData.tag.bmp = NULL;
         cleanupBitmap(bmp);
+        bmp = _aiFixed[i].tagData.moreTag.bmp;
+        _aiFixed[i].tagData.moreTag.bmp = NULL;
+        cleanupBitmap(bmp);
         i--;
     }
 }
@@ -430,7 +433,7 @@ void processData(char *data)
 
         AI_Aircraft ai;
 
-        int cols = sscanf(line, "%15[^,],%15[^,],%15[^,],%lf,%lf,%lf,%lf,%lf",
+        int cols = sscanf(line, "%15[^,],%31[^,],%15[^,],%lf,%lf,%lf,%lf,%lf",
             ai.callsign, ai.airline, ai.model, &ai.loc.lat, &ai.loc.lon, &ai.heading, &ai.alt, &ai.speed);
 
         if (cols != 8) {
@@ -460,8 +463,15 @@ void processData(char *data)
                     memcpy(&_aiFixed[i], &ai, _snapshotDataSize);
                     strcpy(_aiFixed[i].tagData.tagText, ai.callsign);
                     strcpy(_aiFixed[i].model, ai.model);
+                    if (*ai.airline == 'x') {
+                        *_aiFixed[i].tagData.moreTagText = '\0';
+                    }
+                    else {
+                        strcpy(_aiFixed[i].tagData.moreTagText, ai.airline);
+                    }
                     // Tag will be created later by single-threaded drawing thread
                     _aiFixed[i].tagData.tag.bmp = NULL;
+                    _aiFixed[i].tagData.moreTag.bmp = NULL;
                     _aiFixedCount++;
                 }
             }
@@ -599,6 +609,7 @@ bool listenerRead(const char* request, int waitMillis, bool immediate)
             if (strlen(data) > 1) {
                 printf("%s\n", data);
             }
+
             if (strncmp(data, "# Clear,", 8) == 0) {
                 if (strncmp(&data[8], "all", 3) == 0 || strncmp(&data[8], "home", 4) == 0) {
                     removeStale(true);

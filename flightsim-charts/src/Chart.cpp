@@ -15,15 +15,17 @@ const char AircraftFile[] = "images/aircraft.png";
 const char AircraftSmallFile[] = "images/aircraft_small.png";
 const char AircraftOtherFile[] = "images/aircraft_other.png";
 const char AircraftSmallOtherFile[] = "images/aircraft_small_other.png";
+const char LargeOtherFile[] = "images/aircraft_large_other.png";
 const char HelicopterOtherFile[] = "images/helicopter_other.png";
 const char GliderOtherFile[] = "images/glider_other.png";
-const char LargeOtherFile[] = "images/aircraft_large_other.png";
 const char JetOtherFile[] = "images/small_jet_other.png";
-const char MilitaryOtherFile[] = "images/military_jet_other.png";
 const char TurbopropOtherFile[] = "images/turboprop_other.png";
+const char MilitaryJetFile[] = "images/military_jet.png";
+const char MilitaryOtherFile[] = "images/military_other.png";
 const char VehicleFile[] = "images/vehicle.png";
 const char AirportFile[] = "images/airport.png";
 const char WaypointFile[] = "images/waypoint.png";
+const char HomeFile[] = "images/home.png";
 const char LabelFile[] = "images/label.png";
 const char MarkerFile[] = "images/marker.png";
 const char RingFile[] = "images/ring.png";
@@ -53,6 +55,7 @@ extern AI_Aircraft _aiAircraft[Max_AI_Aircraft];
 extern AI_Trail _aiTrail[3];
 extern char _watchCallsign[16];
 extern bool _watchInProgress;
+extern char _lastImage[3][256];
 
 
 // Variables
@@ -92,7 +95,8 @@ int _mouseStartZ = 0;
 int _titleState;
 int _titleDelay;
 bool _showTags = true;
-bool _showAiPhotos = false;
+bool _showFixedTags = true;
+bool _showAiPhotos = true;
 bool _showCalibration = false;
 Locn _clickedLoc;
 Position _clickedPos;
@@ -104,6 +108,11 @@ int _lastRotate = MAXINT;
 char _closestAircraft[32];
 bool _menuCallback = false;
 char _aiTitle[512] = "";
+bool _ctrlPressed;
+Position _measureStartPos;
+Locn _measureStartLoc;
+TagData _measureTag;
+bool _ignoreNextRelease;
 
 enum MENU_ITEMS {
     MENU_LOAD_CHART,
@@ -124,6 +133,7 @@ enum MENU_ITEMS {
     MENU_TELEPORT_FOLLOW,
     MENU_MAX_RANGE,
     MENU_SHOW_TAGS,
+    MENU_SHOW_FIXED_TAGS,
     MENU_SHOW_AI_PHOTOS,
     MENU_CLEAR_AI_TRAILS,
     MENU_SHOW_CALIBRATION,
@@ -307,15 +317,17 @@ void initVars()
     _aircraft.smallBmp = NULL;
     _aircraft.otherBmp = NULL;
     _aircraft.smallOtherBmp = NULL;
+    _aircraft.largeOtherBmp = NULL;
     _aircraft.helicopterOtherBmp = NULL;
     _aircraft.gliderOtherBmp = NULL;
-    _aircraft.largeOtherBmp = NULL;
     _aircraft.jetOtherBmp = NULL;
-    _aircraft.militaryOtherBmp = NULL;
     _aircraft.turbopropOtherBmp = NULL;
+    _aircraft.militaryJetBmp = NULL;
+    _aircraft.militaryOtherBmp = NULL;
     _aircraft.vehicleBmp = NULL;
     _aircraft.airportBmp = NULL;
     _aircraft.waypointBmp = NULL;
+    _aircraft.homeBmp = NULL;
     _aircraftLabel.bmp = NULL;
     _aircraftLabelBmpCopy = NULL;
     _marker.bmp = NULL;
@@ -345,6 +357,8 @@ void initVars()
     _clickedPos.x = -1;
     _clipboardPos.x = -1;
     *_closestAircraft = '\0';
+    _measureStartPos.x = MAXINT;
+    _measureTag.tag.bmp = NULL;
 }
 
 /// <summary>
@@ -415,6 +429,7 @@ HMENU createMenu()
     AppendMenu(menu, MF_STRING, MENU_SHOW_TAGS, "Show tags");
 
     if (_showAi) {
+        AppendMenu(menu, MF_STRING, MENU_SHOW_FIXED_TAGS, "Show AI placename tags");
         AppendMenu(menu, MF_STRING, MENU_SHOW_AI_PHOTOS, "Show AI photos in browser");
         AppendMenu(menu, MF_STRING, MENU_CLEAR_AI_TRAILS, "Clear AI trails");
     }
@@ -476,6 +491,8 @@ void updateMenu(HMENU menu)
         EnableMenuItem(menu, MENU_SHOW_AI_PHOTOS, MF_ENABLED);
         CheckMenuItem(menu, MENU_SHOW_AI_PHOTOS, checkedState(_showAiPhotos));
         EnableMenuItem(menu, MENU_CLEAR_AI_TRAILS, MF_ENABLED);
+        EnableMenuItem(menu, MENU_SHOW_FIXED_TAGS, MF_ENABLED);
+        CheckMenuItem(menu, MENU_SHOW_FIXED_TAGS, checkedState(_showFixedTags));
     }
 
     EnableMenuItem(menu, MENU_SHOW_CALIBRATION, enabledState(calibrated));
@@ -671,9 +688,17 @@ void actionMenuItem()
         _showTags = !_showTags;
         break;
     }
+    case MENU_SHOW_FIXED_TAGS:
+    {
+        _showFixedTags = !_showFixedTags;
+        break;
+    }
     case MENU_SHOW_AI_PHOTOS:
     {
         _showAiPhotos = !_showAiPhotos;
+        *_lastImage[0] = '\0';
+        *_lastImage[1] = '\0';
+        *_lastImage[2] = '\0';
         break;
     }
     case MENU_CLEAR_AI_TRAILS:
@@ -815,7 +840,12 @@ bool init()
 void cleanupBitmap(ALLEGRO_BITMAP* bmp)
 {
     if (bmp != NULL) {
-        al_destroy_bitmap(bmp);
+        try {
+            al_destroy_bitmap(bmp);
+        }
+        catch(std::exception e) {
+            // Do nothing
+        }
     }
 }
 
@@ -830,15 +860,17 @@ void cleanup()
     cleanupBitmap(_aircraft.smallBmp);
     cleanupBitmap(_aircraft.otherBmp);
     cleanupBitmap(_aircraft.smallOtherBmp);
+    cleanupBitmap(_aircraft.largeOtherBmp);
     cleanupBitmap(_aircraft.helicopterOtherBmp);
     cleanupBitmap(_aircraft.gliderOtherBmp);
     cleanupBitmap(_aircraft.vehicleBmp);
-    cleanupBitmap(_aircraft.largeOtherBmp);
     cleanupBitmap(_aircraft.jetOtherBmp);
-    cleanupBitmap(_aircraft.militaryOtherBmp);
     cleanupBitmap(_aircraft.turbopropOtherBmp);
+    cleanupBitmap(_aircraft.militaryJetBmp);
+    cleanupBitmap(_aircraft.militaryOtherBmp);
     cleanupBitmap(_aircraft.airportBmp);
     cleanupBitmap(_aircraft.waypointBmp);
+    cleanupBitmap(_aircraft.homeBmp);
     cleanupBitmap(_aircraftLabel.bmp);
     cleanupBitmap(_aircraftLabelBmpCopy);
     cleanupBitmap(_marker.bmp);
@@ -846,6 +878,7 @@ void cleanup()
     cleanupBitmap(_arrow.bmp);
     cleanupBitmap(_windInfo.bmp);
     cleanupBitmap(_windInfoCopy.bmp);
+    cleanupBitmap(_measureTag.tag.bmp);
 
     // Clenaup tags
     for (int i = 0; i < _tagCount; i++) {
@@ -865,6 +898,10 @@ void cleanup()
     for (int i = 0; i < _aiFixedCount; i++) {
         ALLEGRO_BITMAP* bmp = _aiFixed[i].tagData.tag.bmp;
         _aiFixed[i].tagData.tag.bmp = NULL;
+        cleanupBitmap(bmp);
+
+        bmp = _aiFixed[i].tagData.moreTag.bmp;
+        _aiFixed[i].tagData.moreTag.bmp = NULL;
         cleanupBitmap(bmp);
     }
 
@@ -995,6 +1032,14 @@ bool initAircraft()
         return false;
     }
 
+    _aircraft.largeOtherBmp = al_load_bitmap(LargeOtherFile);
+    if (!_aircraft.largeOtherBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", LargeOtherFile);
+        showMessage(msg, true);
+        return false;
+    }
+
     _aircraft.helicopterOtherBmp = al_load_bitmap(HelicopterOtherFile);
     if (!_aircraft.helicopterOtherBmp) {
         char msg[256];
@@ -1011,14 +1056,6 @@ bool initAircraft()
         return false;
     }
 
-    _aircraft.largeOtherBmp = al_load_bitmap(LargeOtherFile);
-    if (!_aircraft.largeOtherBmp) {
-        char msg[256];
-        sprintf(msg, "Missing file: %s\n", LargeOtherFile);
-        showMessage(msg, true);
-        return false;
-    }
-
     _aircraft.jetOtherBmp = al_load_bitmap(JetOtherFile);
     if (!_aircraft.jetOtherBmp) {
         char msg[256];
@@ -1027,18 +1064,26 @@ bool initAircraft()
         return false;
     }
 
-    _aircraft.militaryOtherBmp = al_load_bitmap(MilitaryOtherFile);
-    if (!_aircraft.militaryOtherBmp) {
-        char msg[256];
-        sprintf(msg, "Missing file: %s\n", MilitaryOtherFile);
-        showMessage(msg, true);
-        return false;
-    }
-
     _aircraft.turbopropOtherBmp = al_load_bitmap(TurbopropOtherFile);
     if (!_aircraft.turbopropOtherBmp) {
         char msg[256];
         sprintf(msg, "Missing file: %s\n", TurbopropOtherFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.militaryJetBmp = al_load_bitmap(MilitaryJetFile);
+    if (!_aircraft.militaryJetBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", MilitaryJetFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.militaryOtherBmp = al_load_bitmap(MilitaryOtherFile);
+    if (!_aircraft.militaryOtherBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", MilitaryOtherFile);
         showMessage(msg, true);
         return false;
     }
@@ -1063,6 +1108,14 @@ bool initAircraft()
     if (!_aircraft.waypointBmp) {
         char msg[256];
         sprintf(msg, "Missing file: %s\n", WaypointFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.homeBmp = al_load_bitmap(HomeFile);
+    if (!_aircraft.homeBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", HomeFile);
         showMessage(msg, true);
         return false;
     }
@@ -1243,12 +1296,12 @@ void getIconData(char *model, int altitude, IconData* iconData, int wingSpan)
     char prefix[8];
     sprintf(prefix, "_%.3s_", model);
 
-    if (strstr(Helis, prefix) != NULL) {
+    if (strstr(Heli, prefix) != NULL) {
         iconData->bmp = _aircraft.helicopterOtherBmp;
         return;
     }
 
-    if (strstr(Turboprops, prefix) != NULL) {
+    if (strstr(Turboprop, prefix) != NULL) {
         iconData->bmp = _aircraft.turbopropOtherBmp;
         return;
     }
@@ -1256,22 +1309,27 @@ void getIconData(char *model, int altitude, IconData* iconData, int wingSpan)
     iconData->halfWidth = _aircraft.halfWidth;
     iconData->halfHeight = _aircraft.halfHeight;
 
-    if (strstr(Airliners, prefix) != NULL) {
+    if (strstr(Airliner, prefix) != NULL) {
         iconData->bmp = _aircraft.otherBmp;
         return;
     }
 
-    if (strstr(Large_Airliners, prefix) != NULL) {
+    if (strstr(Large_Airliner, prefix) != NULL) {
         iconData->bmp = _aircraft.largeOtherBmp;
         return;
     }
 
-    if (strstr(Jets, prefix) != NULL) {
+    if (strstr(Jet, prefix) != NULL) {
         iconData->bmp = _aircraft.jetOtherBmp;
         return;
     }
 
-    if (strstr(Military, prefix) != NULL) {
+    if (strstr(Military_Jet, prefix) != NULL) {
+        iconData->bmp = _aircraft.militaryJetBmp;
+        return;
+    }
+
+    if (strstr(Military_Other, prefix) != NULL) {
         iconData->bmp = _aircraft.militaryOtherBmp;
         return;
     }
@@ -1340,10 +1398,11 @@ void drawOtherAircraft()
                 if (_otherTag[i].tag.bmp != NULL) {
                     // Draw tag to right of aircraft
                     al_draw_bitmap(_otherTag[i].tag.bmp, pos.x + 1 + iconData.halfHeight * 1.5 * _aircraft.scale, pos.y - _otherTag[i].tag.height / 2.0, 0);
-                }
 
-                if (_otherTag[i].moreTag.bmp != NULL) {
                     // Draw second tag with alt and speed
+                    if (_otherTag[i].moreTag.bmp == NULL) {
+                        createTagBitmap(_otherTag[i].moreTagText, &_otherTag[i].moreTag);
+                    }
                     al_draw_bitmap(_otherTag[i].moreTag.bmp, pos.x + 1 + iconData.halfHeight * 1.5 * _aircraft.scale, pos.y + _otherTag[i].tag.height / 2.0, 0);
                 }
             }
@@ -1472,7 +1531,12 @@ void drawAiObjects()
                 bmp = _aircraft.airportBmp;
             }
             else if (strcmp(_aiFixed[i].model, "WAYP") == 0) {
-                bmp = _aircraft.waypointBmp;
+                if (strcmp(_aiFixed[i].tagData.tagText, "Home") == 0) {
+                    bmp = _aircraft.homeBmp;
+                }
+                else {
+                    bmp = _aircraft.waypointBmp;
+                }
                 tagShift += halfWidth;
             }
             else if (strcmp(_aiFixed[i].model, "SRCH") == 0) {
@@ -1494,6 +1558,15 @@ void drawAiObjects()
 
                 // Draw tag to right
                 al_draw_bitmap(_aiFixed[i].tagData.tag.bmp, pos.x + tagShift * _aircraft.scale, pos.y - _aiFixed[i].tagData.tag.height / 4, 0);
+            }
+
+            if (_showFixedTags && *_aiFixed[i].tagData.moreTagText != '\0') {
+                if (_aiFixed[i].tagData.moreTag.bmp == NULL) {
+                    createTagBitmap(_aiFixed[i].tagData.moreTagText, &_aiFixed[i].tagData.moreTag);
+                }
+
+                // Draw tag to right
+                al_draw_bitmap(_aiFixed[i].tagData.moreTag.bmp, pos.x + tagShift * _aircraft.scale, pos.y + _aiFixed[i].tagData.tag.height * 3 / 4, 0);
             }
         }
     }
@@ -1555,6 +1628,35 @@ void render()
             int y = _clipboardPos.y * _view.scale - destY;
             al_draw_scaled_bitmap(_ring.bmp, 0, 0, _ring.width, _ring.height, x - width / 2, y - height / 2.0, width, height, 0);
         }
+    }
+
+    if (_measureStartPos.x != MAXINT) {
+        // Show measuring line
+        Position measureEndPos;
+        Locn measureEndLoc;
+        displayToChartPos(_mouse.x, _mouse.y, &measureEndPos);
+        chartPosToLocation(measureEndPos.x, measureEndPos.y, &measureEndLoc);
+        
+        Position startPos;
+        Position endPos;
+        chartToDisplayPos(_measureStartPos.x, _measureStartPos.y, &startPos);
+        chartToDisplayPos(measureEndPos.x, measureEndPos.y, &endPos);
+
+        Position midPos;
+        midPos.x = (startPos.x + endPos.x) / 2;
+        midPos.y = (startPos.y + endPos.y) / 2;
+        double dist = greatCircleDistance(&_measureStartLoc, &measureEndLoc);
+        sprintf(_measureTag.moreTagText, "%.1f", dist);
+
+        if (strcmp(_measureTag.tagText, _measureTag.moreTagText) != 0) {
+            strcpy(_measureTag.tagText, _measureTag.moreTagText);
+            cleanupBitmap(_measureTag.tag.bmp);
+            createTagBitmap(_measureTag.tagText, &_measureTag.tag, true);
+        }
+
+        ALLEGRO_COLOR colour = al_map_rgb(0x60, 0x40, 0x20);
+        al_draw_line(startPos.x, startPos.y, endPos.x, endPos.y, colour, 2);
+        al_draw_bitmap(_measureTag.tag.bmp, midPos.x - 20, midPos.y - 5, 0);
     }
 
     if (_windDirection != -1) {
@@ -1741,7 +1843,7 @@ void updateOwnAircraft()
 /// Create a tag bitmap to show to the right of other aircraft.
 /// It displays their callsign and aircraft model.
 /// </summary>
-void createTagBitmap(char *tagText, DrawData* tag)
+void createTagBitmap(char *tagText, DrawData* tag, bool isMeasure)
 {
     tag->width = 4 + strlen(tagText) * 8;
     tag->height = 10;
@@ -1750,7 +1852,13 @@ void createTagBitmap(char *tagText, DrawData* tag)
 
     al_set_target_bitmap(tag->bmp);
 
-    al_clear_to_color(al_map_rgb(0xe0, 0xe0, 0xe0));
+    if (isMeasure) {
+        al_clear_to_color(al_map_rgb(0xe0, 0xe0, 0x50));
+    }
+    else {
+        al_clear_to_color(al_map_rgb(0xe0, 0xe0, 0xe0));
+    }
+
     al_draw_text(_font, al_map_rgb(0x40, 0x40, 0x40), 2, 2, 0, tagText);
 
     al_set_target_backbuffer(_display);
@@ -1791,7 +1899,7 @@ void updateOtherTags()
 
         if (!tagFound) {
             createTagBitmap(_otherTag[i].tagText, &_otherTag[i].tag);
-            createTagBitmap(_otherTag[i].moreTagText, &_otherTag[i].moreTag);
+            createTagBitmap(moreTagText, &_otherTag[i].moreTag);
         }
     }
 
@@ -1801,7 +1909,12 @@ void updateOtherTags()
             al_destroy_bitmap(_oldTag[i].tag.bmp);
         }
         if (_oldTag[i].moreTag.bmp != NULL) {
-            al_destroy_bitmap(_oldTag[i].moreTag.bmp);
+            try {
+                al_destroy_bitmap(_oldTag[i].moreTag.bmp);
+            }
+            catch (std::exception e) {
+                printf("Failed to delete old moreTag %d of %d\n", i, _tagCount);
+            }
         }
     }
 
@@ -1915,11 +2028,15 @@ void doUpdate()
 /// <summary>
 /// Handle keypress
 /// </summary>
-void doKeypress(ALLEGRO_EVENT* event)
+void doKeypress(ALLEGRO_EVENT* event, bool isDown)
 {
     switch (event->keyboard.keycode) {
     case ALLEGRO_KEY_ESCAPE:
         //_quit = true;
+        break;
+    case ALLEGRO_KEY_LCTRL:
+    case ALLEGRO_KEY_RCTRL:
+        _ctrlPressed = isDown;
         break;
     }
 }
@@ -1936,6 +2053,7 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
     if (event->mouse.button == 1) {
         if (isPress) {
             // Left mouse button pressed
+            _ignoreNextRelease = false;
             clickedPos.x = _mouse.x;
             clickedPos.y = _mouse.y;
             _mouseData.dragging = true;
@@ -1953,6 +2071,23 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
 
                 _titleState = -2;
             }
+
+            if (_ctrlPressed) {
+                // Start measuring
+                _ignoreNextRelease = true;
+                displayToChartPos(_mouse.x, _mouse.y, &_measureStartPos);
+                chartPosToLocation(_measureStartPos.x, _measureStartPos.y, &_measureStartLoc);
+
+                strcpy(_measureTag.tagText, "0.0");
+                createTagBitmap(_measureTag.tagText, &_measureTag.tag, true);
+            }
+            else if (_measureStartPos.x != MAXINT) {
+                // Stop measuring
+                _ignoreNextRelease = true;
+                _measureStartPos.x = MAXINT;
+                cleanupBitmap(_measureTag.tag.bmp);
+                _measureTag.tag.bmp = NULL;
+            }
         }
         else {
             // Left mouse button released
@@ -1962,6 +2097,11 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
                 _chart.y += _mouseData.dragY / _view.scale;
                 _mouseData.dragX = 0;
                 _mouseData.dragY = 0;
+            }
+
+            if (_ignoreNextRelease) {
+                _ignoreNextRelease = false;
+                return;
             }
 
             // If mouse wasn't dragged check for click on AI aircraft
@@ -2077,7 +2217,11 @@ void showChart()
             break;
 
         case ALLEGRO_EVENT_KEY_DOWN:
-            doKeypress(&event);
+            doKeypress(&event, true);
+            break;
+
+        case ALLEGRO_EVENT_KEY_UP:
+            doKeypress(&event, false);
             break;
 
         case ALLEGRO_EVENT_MOUSE_BUTTON_DOWN:

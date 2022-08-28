@@ -20,6 +20,7 @@ int main(int argc, char **argv)
         }
         if (_stricmp(argv[i], "noconnect") == 0) {
             _noConnect = true;
+            _showAi = true;
         }
     }
 

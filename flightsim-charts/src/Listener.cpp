@@ -20,7 +20,7 @@ const char* VFR_Default = "DA40-NG Asobo";
 extern HANDLE hSimConnect;
 extern bool _connected;
 extern bool _listening;
-extern char* _remoteIp;
+extern char _remoteIp[32];
 extern SOCKET _sockfd;
 extern sockaddr_in _sendAddr;
 extern char* _listenerData;
@@ -36,6 +36,7 @@ extern AI_ModelMatch _aiModelMatch[Max_AI_ModelMatch];
 extern AI_Trail _aiTrail[3];
 extern bool _showAiPhotos;
 extern char _lastImage[3][256];
+extern bool _clearAll;
 
 
 void getModelMatch(const char* modelMatchFile)
@@ -47,7 +48,7 @@ void getModelMatch(const char* modelMatchFile)
     }
 
     int linenum = 0;
-    char line[16384];
+    char line[16000];
     char prefix[7];
     char model[5];
 
@@ -60,7 +61,7 @@ void getModelMatch(const char* modelMatchFile)
         if (_strnicmp(pos, "<ModelMatchRule ", 16) == 0) {
             pos += 16;
             if (_strnicmp(pos, "CallsignPrefix=\"", 16) != 0) {
-                printf("Bad model match CallsignPrefix at line %d\n", linenum);
+                //printf("Bad model match CallsignPrefix at line %d\n", linenum);
                 continue;
             }
             pos += 16;
@@ -145,12 +146,42 @@ void listenerInit()
 
     srand(time(NULL));
 
-    _remoteIp = getenv("fr24server");
-    if (!_remoteIp) {
+    WSADATA wsaData;
+    int err = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (err != 0) {
+        printf("Listener failed to initialise Windows Sockets: %d\n", err);
+        return;
+    }
+
+    char *server = getenv("fr24server");
+    if (!server) {
         printf("No fr24server\n");
         return;
     }
-    printf("fr24server: %s\n", _remoteIp);
+
+    // If it's a hostname need to lookup the IPv4 address
+    if (isdigit(*server)) {
+        strcpy(_remoteIp, server);
+    }
+    else {
+        struct addrinfo hints, *resp;
+        int status;
+
+        memset(&hints, 0, sizeof hints);
+        hints.ai_family = AF_INET;  // Only want IPv4 address
+        hints.ai_socktype = SOCK_STREAM;
+
+        if ((status = getaddrinfo(server, NULL, &hints, &resp)) != 0) {
+            printf("Failed to get address of fr24server %s: %s\n", server, gai_strerror(status));
+            return;
+        }
+
+        struct sockaddr_in* ipv4 = (struct sockaddr_in*)resp->ai_addr;
+        void *addr = &(ipv4->sin_addr);
+        inet_ntop(resp->ai_family, addr, _remoteIp, sizeof _remoteIp);
+    }
+
+    printf("fr24server: %s (%s)\n", _remoteIp, server);
 
     _listenerHome = getenv("fr24home");
     if (_listenerHome) {
@@ -161,13 +192,6 @@ void listenerInit()
     if (modelMatchFile) {
         printf("fr24modelmatch: %s\n", modelMatchFile);
         getModelMatch(modelMatchFile);
-    }
-
-    WSADATA wsaData;
-    int err = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (err != 0) {
-        printf("Listener failed to initialise Windows Sockets: %d\n", err);
-        return;
     }
 
     _sendAddr.sin_family = AF_INET;
@@ -396,7 +420,7 @@ int getTrail(char *line)
 
     _aiTrail[t].count = i;
 
-    if (strcmp(_lastImage[t], _aiTrail[t].image) != 0) {
+    if (strcmp(_lastImage[0], _aiTrail[t].image) != 0 && strcmp(_lastImage[1], _aiTrail[t].image) != 0 && strcmp(_lastImage[2], _aiTrail[t].image) != 0) {
         strcpy(_lastImage[t], _aiTrail[t].image);
         if (_showAiPhotos && strcmp(_lastImage[t], "None") != 0) {
             // Launch a browser to view the aircraft image
@@ -549,6 +573,15 @@ bool listenerRead(const char* request, int waitMillis, bool immediate)
     time_t now;
     time(&now);
 
+    if (_clearAll) {
+        _clearAll = false;
+        removeStale(true);
+        removeFixed();
+        _listenerInitFetch = true;
+        Sleep(waitMillis);
+        return false;
+    }
+
     if (!immediate && now - lastRequest < IntervalSecs) {
         Sleep(waitMillis);
         return false;
@@ -580,7 +613,7 @@ bool listenerRead(const char* request, int waitMillis, bool immediate)
     }
 
     // Wait for data
-    int timeout = 1000;
+    int timeout = 1500;
     setsockopt(_sockfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(int));
 
     bool success = false;

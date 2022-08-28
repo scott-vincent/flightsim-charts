@@ -447,11 +447,10 @@ void findCalibratedCharts(CalibratedData* calib, int* count)
         }
     }
 
-    // Expect folder to end with /xx or /xxxx
-    if (strlen(sep) != 3 && strlen(sep) != 5) {
-        return;
+    // If folder ends with /xx or /xxxx go back another level
+    if (strlen(sep) == 3 || strlen(sep) == 5) {
+        *sep = '\0';
     }
-    *sep = '\0';
 
     // Recurse parent folder to find all calibration files
     findAllFiles(folder, calib, count);

@@ -16,6 +16,9 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="..\..\..\..\..\MSFS SDK\SimConnect SDK\VS\SimConnectClient-static.props">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="headers\ChartCoords.h">

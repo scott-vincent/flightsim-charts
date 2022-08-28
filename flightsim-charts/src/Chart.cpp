@@ -20,7 +20,9 @@ const char HelicopterOtherFile[] = "images/helicopter_other.png";
 const char GliderOtherFile[] = "images/glider_other.png";
 const char JetOtherFile[] = "images/small_jet_other.png";
 const char TurbopropOtherFile[] = "images/turboprop_other.png";
+const char MilitaryHeliFile[] = "images/military_helicopter.png";
 const char MilitaryJetFile[] = "images/military_jet.png";
+const char MilitarySmallFile[] = "images/military_small.png";
 const char MilitaryOtherFile[] = "images/military_other.png";
 const char VehicleFile[] = "images/vehicle.png";
 const char AirportFile[] = "images/airport.png";
@@ -56,7 +58,8 @@ extern AI_Trail _aiTrail[3];
 extern char _watchCallsign[16];
 extern bool _watchInProgress;
 extern char _lastImage[3][256];
-
+extern char* _listenerHome;
+extern bool _clearAll;
 
 // Variables
 double DegreesToRadians = ALLEGRO_PI / 180.0f;
@@ -96,7 +99,9 @@ int _titleState;
 int _titleDelay;
 bool _showTags = true;
 bool _showFixedTags = true;
+bool _showAiInfoTags = true;
 bool _showAiPhotos = true;
+bool _showAiMilitaryOnly = false;
 bool _showCalibration = false;
 Locn _clickedLoc;
 Position _clickedPos;
@@ -113,10 +118,15 @@ Position _measureStartPos;
 Locn _measureStartLoc;
 TagData _measureTag;
 bool _ignoreNextRelease;
+char _aiHome[256];
+char _previousChart[512];
 
 enum MENU_ITEMS {
     MENU_LOAD_CHART,
-    MENU_LOAD_CLOSEST,
+    MENU_LOAD_PREVIOUS,
+    MENU_LOAD_CLOSEST_TO_AIRCRAFT,
+    MENU_LOAD_CLOSEST_TO_HERE,
+    MENU_LOAD_CLOSEST_TO_CLIPBOARD,
     MENU_LOCATE_AIRCRAFT,
     MENU_FIX_CRASH,
     MENU_ROTATE_AGAIN,
@@ -128,13 +138,17 @@ enum MENU_ITEMS {
     MENU_TELEPORT_HERE_GROUND,
     MENU_TELEPORT_HERE_AIR,
     MENU_TELEPORT_CLIPBOARD,
+    MENU_TELEPORT_SET_AI_HOME_HERE,
+    MENU_TELEPORT_SET_AI_HOME_CLIPBOARD,
     MENU_TELEPORT_RESTORE_LOCATION,
     MENU_TELEPORT_SAVE_LOCATION,
     MENU_TELEPORT_FOLLOW,
     MENU_MAX_RANGE,
     MENU_SHOW_TAGS,
     MENU_SHOW_FIXED_TAGS,
+    MENU_SHOW_AI_INFO_TAGS,
     MENU_SHOW_AI_PHOTOS,
+    MENU_SHOW_AI_MILITARY_ONLY,
     MENU_CLEAR_AI_TRAILS,
     MENU_SHOW_CALIBRATION,
     MENU_RECALIBRATE,
@@ -142,8 +156,9 @@ enum MENU_ITEMS {
 
 // Prototypes
 void newChart();
-void closestChart();
+void closestChart(Locn* loc);
 void clearCustomPoints();
+bool initChart();
 
 
 int showMessage(const char *message, bool isError, const char *title, bool canCancel)
@@ -322,7 +337,9 @@ void initVars()
     _aircraft.gliderOtherBmp = NULL;
     _aircraft.jetOtherBmp = NULL;
     _aircraft.turbopropOtherBmp = NULL;
+    _aircraft.militaryHeliBmp = NULL;
     _aircraft.militaryJetBmp = NULL;
+    _aircraft.militarySmallBmp = NULL;
     _aircraft.militaryOtherBmp = NULL;
     _aircraft.vehicleBmp = NULL;
     _aircraft.airportBmp = NULL;
@@ -359,6 +376,7 @@ void initVars()
     *_closestAircraft = '\0';
     _measureStartPos.x = MAXINT;
     _measureTag.tag.bmp = NULL;
+    *_previousChart = '\0';
 }
 
 /// <summary>
@@ -390,6 +408,13 @@ void findClosestAircraft(Locn* loc)
 
 HMENU createMenu()
 {
+    HMENU loadMenu = CreatePopupMenu();
+    AppendMenu(loadMenu, MF_STRING, MENU_LOAD_CHART, "Browse for file");
+    AppendMenu(loadMenu, MF_STRING, MENU_LOAD_PREVIOUS, "Previous chart");
+    AppendMenu(loadMenu, MF_STRING, MENU_LOAD_CLOSEST_TO_AIRCRAFT, "Closest to aircraft");
+    AppendMenu(loadMenu, MF_STRING, MENU_LOAD_CLOSEST_TO_HERE, "Closest to here");
+    AppendMenu(loadMenu, MF_STRING, MENU_LOAD_CLOSEST_TO_CLIPBOARD, "Closest to clipboard location");
+
     HMENU rotateMenu = CreatePopupMenu();
     AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_LEFT_20, "-20°");
     AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_RIGHT_20, "+20°");
@@ -401,8 +426,24 @@ HMENU createMenu()
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_HERE, "To here (same alt and speed)");
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_HERE_AIR, "To here (2000ft @ 150kn)");
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_CLIPBOARD, "To clipboard location");
+    if (_showAi) {
+        AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_SET_AI_HOME_HERE, "Set AI Home to here");
+        AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_SET_AI_HOME_CLIPBOARD, "Set AI Home to clipboard");
+    }
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_RESTORE_LOCATION, "Restore location");
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_SAVE_LOCATION, "Save location");
+
+    HMENU showMenu = CreatePopupMenu();
+    AppendMenu(showMenu, MF_STRING, MENU_MAX_RANGE, "Maximum Range");
+    AppendMenu(showMenu, MF_STRING, MENU_SHOW_TAGS, "Show tags");
+    if (_showAi) {
+        AppendMenu(showMenu, MF_STRING, MENU_SHOW_FIXED_TAGS, "Show AI placename tags");
+        AppendMenu(showMenu, MF_STRING, MENU_SHOW_AI_INFO_TAGS, "Show AI info tags");
+        AppendMenu(showMenu, MF_STRING, MENU_SHOW_AI_PHOTOS, "Show AI photos in browser");
+        AppendMenu(showMenu, MF_STRING, MENU_SHOW_AI_MILITARY_ONLY, "Show AI military only");
+        AppendMenu(showMenu, MF_STRING, MENU_CLEAR_AI_TRAILS, "Clear AI trails");
+    }
+    AppendMenu(showMenu, MF_STRING, MENU_SHOW_CALIBRATION, "Show calibration");
 
     char menuText[64];
     if (*_follow.callsign == '\0') {
@@ -418,23 +459,14 @@ HMENU createMenu()
     }
 
     HMENU menu = CreatePopupMenu();
-    AppendMenu(menu, MF_STRING, MENU_LOAD_CHART, "Load chart");
-    AppendMenu(menu, MF_STRING, MENU_LOAD_CLOSEST, "Load closest");
+    AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)loadMenu, "Load chart");
     AppendMenu(menu, MF_STRING, MENU_LOCATE_AIRCRAFT, "Locate aircraft");
     AppendMenu(menu, MF_STRING, MENU_FIX_CRASH, "Fix crash");
     AppendMenu(menu, MF_STRING, MENU_ROTATE_AGAIN, "Rotate again");
     AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)rotateMenu, "Rotate aircraft");
     AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)teleportMenu, "Teleport aircraft");
-    AppendMenu(menu, MF_STRING, MENU_MAX_RANGE, "Maximum Range");
-    AppendMenu(menu, MF_STRING, MENU_SHOW_TAGS, "Show tags");
+    AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)showMenu, "Show / Clear");
 
-    if (_showAi) {
-        AppendMenu(menu, MF_STRING, MENU_SHOW_FIXED_TAGS, "Show AI placename tags");
-        AppendMenu(menu, MF_STRING, MENU_SHOW_AI_PHOTOS, "Show AI photos in browser");
-        AppendMenu(menu, MF_STRING, MENU_CLEAR_AI_TRAILS, "Clear AI trails");
-    }
-
-    AppendMenu(menu, MF_STRING, MENU_SHOW_CALIBRATION, "Show calibration");
     AppendMenu(menu, MF_SEPARATOR, 0, NULL);
     AppendMenu(menu, MF_STRING, MENU_RECALIBRATE, "Re-calibrate chart");
 
@@ -469,7 +501,10 @@ void updateMenu(HMENU menu)
     bool active = _aircraftData.loc.lat != MAXINT;
     bool calibrated = _chartData.state == 2;
 
-    EnableMenuItem(menu, MENU_LOAD_CLOSEST, enabledState(active));
+    EnableMenuItem(menu, MENU_LOAD_PREVIOUS, enabledState(*_previousChart != '\0'));
+    EnableMenuItem(menu, MENU_LOAD_CLOSEST_TO_AIRCRAFT, enabledState(active));
+    EnableMenuItem(menu, MENU_LOAD_CLOSEST_TO_HERE, enabledState(calibrated));
+    EnableMenuItem(menu, MENU_LOAD_CLOSEST_TO_CLIPBOARD, enabledState(calibrated));
     EnableMenuItem(menu, MENU_LOCATE_AIRCRAFT, enabledState(active && calibrated));
     EnableMenuItem(menu, MENU_FIX_CRASH, enabledState(active && calibrated && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_ROTATE_AGAIN, enabledState(active && !_teleport.inProgress && _lastRotate != MAXINT));
@@ -488,11 +523,17 @@ void updateMenu(HMENU menu)
     EnableMenuItem(menu, MENU_SHOW_TAGS, enabledState(calibrated));
 
     if (_showAi) {
-        EnableMenuItem(menu, MENU_SHOW_AI_PHOTOS, MF_ENABLED);
-        CheckMenuItem(menu, MENU_SHOW_AI_PHOTOS, checkedState(_showAiPhotos));
-        EnableMenuItem(menu, MENU_CLEAR_AI_TRAILS, MF_ENABLED);
+        EnableMenuItem(menu, MENU_TELEPORT_SET_AI_HOME_HERE, MF_ENABLED);
+        EnableMenuItem(menu, MENU_TELEPORT_SET_AI_HOME_CLIPBOARD, MF_ENABLED);
         EnableMenuItem(menu, MENU_SHOW_FIXED_TAGS, MF_ENABLED);
         CheckMenuItem(menu, MENU_SHOW_FIXED_TAGS, checkedState(_showFixedTags));
+        EnableMenuItem(menu, MENU_SHOW_AI_INFO_TAGS, MF_ENABLED);
+        CheckMenuItem(menu, MENU_SHOW_AI_INFO_TAGS, checkedState(_showAiInfoTags));
+        EnableMenuItem(menu, MENU_SHOW_AI_PHOTOS, MF_ENABLED);
+        CheckMenuItem(menu, MENU_SHOW_AI_PHOTOS, checkedState(_showAiPhotos));
+        EnableMenuItem(menu, MENU_SHOW_AI_MILITARY_ONLY, MF_ENABLED);
+        CheckMenuItem(menu, MENU_SHOW_AI_MILITARY_ONLY, checkedState(_showAiMilitaryOnly));
+        EnableMenuItem(menu, MENU_CLEAR_AI_TRAILS, MF_ENABLED);
     }
 
     EnableMenuItem(menu, MENU_SHOW_CALIBRATION, enabledState(calibrated));
@@ -548,10 +589,44 @@ void actionMenuItem()
         _showCalibration = false;
         break;
     }
-    case MENU_LOAD_CLOSEST:
+    case MENU_LOAD_PREVIOUS:
     {
-        closestChart();
+        char currentChart[512];
+        strcpy(currentChart, _settings.chart);
+        strcpy(_settings.chart, _previousChart);
+        strcpy(_previousChart, currentChart);
+
+        if (initChart()) {
+            // Save the last loaded chart name
+            saveSettings();
+        }
         _showCalibration = false;
+        break;
+    }
+    case MENU_LOAD_CLOSEST_TO_AIRCRAFT:
+    {
+        closestChart(&_aircraftData.loc);
+        _showCalibration = false;
+        break;
+    }
+    case MENU_LOAD_CLOSEST_TO_HERE:
+    {
+        displayToChartPos(_teleport.pos.x, _teleport.pos.y, &_clickedPos);
+        chartPosToLocation(_clickedPos.x, _clickedPos.y, &_teleport.loc);
+        closestChart(&_teleport.loc);
+        _showCalibration = false;
+        break;
+    }
+    case MENU_LOAD_CLOSEST_TO_CLIPBOARD:
+    {
+        getClipboardLocation(&_teleport.loc);
+        if (_teleport.loc.lat == MAXINT) {
+            showClipboardMessage(true);
+        }
+        else {
+            closestChart(&_teleport.loc);
+            _showCalibration = false;
+        }
         break;
     }
     case MENU_LOCATE_AIRCRAFT:
@@ -677,6 +752,30 @@ void actionMenuItem()
         _follow.inProgress = true;
         break;
     }
+    case MENU_TELEPORT_SET_AI_HOME_HERE:
+    {
+        Locn home;
+        displayToChartPos(_teleport.pos.x, _teleport.pos.y, &_clickedPos);
+        chartPosToLocation(_clickedPos.x, _clickedPos.y, &home);
+        sprintf(_aiHome, "%f,%f", home.lat, home.lon);
+        _listenerHome =_aiHome;
+        _clearAll = true;
+        break;
+    }
+    case MENU_TELEPORT_SET_AI_HOME_CLIPBOARD:
+    {
+        Locn home;
+        getClipboardLocation(&home);
+        if (home.lat == MAXINT) {
+            showClipboardMessage(true);
+        }
+        else {
+            sprintf(_aiHome, "%f,%f", home.lat, home.lon);
+            _listenerHome = _aiHome;
+            _clearAll = true;
+        }
+        break;
+    }
     case MENU_MAX_RANGE:
     {
         _maxRange = !_maxRange;
@@ -693,12 +792,22 @@ void actionMenuItem()
         _showFixedTags = !_showFixedTags;
         break;
     }
+    case MENU_SHOW_AI_INFO_TAGS:
+    {
+        _showAiInfoTags = !_showAiInfoTags;
+        break;
+    }
     case MENU_SHOW_AI_PHOTOS:
     {
         _showAiPhotos = !_showAiPhotos;
         *_lastImage[0] = '\0';
         *_lastImage[1] = '\0';
         *_lastImage[2] = '\0';
+        break;
+    }
+    case MENU_SHOW_AI_MILITARY_ONLY:
+    {
+        _showAiMilitaryOnly = !_showAiMilitaryOnly;
         break;
     }
     case MENU_CLEAR_AI_TRAILS:
@@ -866,7 +975,9 @@ void cleanup()
     cleanupBitmap(_aircraft.vehicleBmp);
     cleanupBitmap(_aircraft.jetOtherBmp);
     cleanupBitmap(_aircraft.turbopropOtherBmp);
+    cleanupBitmap(_aircraft.militaryHeliBmp);
     cleanupBitmap(_aircraft.militaryJetBmp);
+    cleanupBitmap(_aircraft.militarySmallBmp);
     cleanupBitmap(_aircraft.militaryOtherBmp);
     cleanupBitmap(_aircraft.airportBmp);
     cleanupBitmap(_aircraft.waypointBmp);
@@ -1072,10 +1183,26 @@ bool initAircraft()
         return false;
     }
 
+    _aircraft.militaryHeliBmp = al_load_bitmap(MilitaryHeliFile);
+    if (!_aircraft.militaryHeliBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", MilitaryHeliFile);
+        showMessage(msg, true);
+        return false;
+    }
+
     _aircraft.militaryJetBmp = al_load_bitmap(MilitaryJetFile);
     if (!_aircraft.militaryJetBmp) {
         char msg[256];
         sprintf(msg, "Missing file: %s\n", MilitaryJetFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.militarySmallBmp = al_load_bitmap(MilitarySmallFile);
+    if (!_aircraft.militarySmallBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", MilitarySmallFile);
         showMessage(msg, true);
         return false;
     }
@@ -1266,10 +1393,11 @@ void drawOwnAircraft()
     }
 }
 
-void getIconData(char *model, int altitude, IconData* iconData, int wingSpan)
+void getIconData(char *model, char *callsign, int altitude, IconData* iconData, int wingSpan)
 {
     iconData->halfWidth = _aircraft.smallHalfWidth;
     iconData->halfHeight = _aircraft.smallHalfHeight;
+    iconData->isMilitary = false;
 
     if (strlen(model) > 5) {
         if (wingSpan <= WINGSPAN_SMALL) {
@@ -1283,7 +1411,7 @@ void getIconData(char *model, int altitude, IconData* iconData, int wingSpan)
         return;
     }
 
-    if (strcmp(model, "GLID") == 0) {
+    if (strcmp(model, "GLID") == 0 || strcmp(model, "DISC") == 0) {
         iconData->bmp = _aircraft.gliderOtherBmp;
         return;
     }
@@ -1293,15 +1421,19 @@ void getIconData(char *model, int altitude, IconData* iconData, int wingSpan)
         return;
     }
 
-    char prefix[8];
-    sprintf(prefix, "_%.3s_", model);
+    char prefixShort[8];
+    char prefixModel[8];
+    char prefixCallsign[8];
+    sprintf(prefixShort, "_%.3s_", model);
+    sprintf(prefixModel, "_%.4s_", model);
+    sprintf(prefixCallsign, "_%.5s_", callsign);
 
-    if (strstr(Heli, prefix) != NULL) {
+    if (strstr(Heli, prefixShort) != NULL) {
         iconData->bmp = _aircraft.helicopterOtherBmp;
         return;
     }
 
-    if (strstr(Turboprop, prefix) != NULL) {
+    if (strstr(Turboprop, prefixShort) != NULL || strstr(Turboprop, prefixModel) != NULL) {
         iconData->bmp = _aircraft.turbopropOtherBmp;
         return;
     }
@@ -1309,35 +1441,49 @@ void getIconData(char *model, int altitude, IconData* iconData, int wingSpan)
     iconData->halfWidth = _aircraft.halfWidth;
     iconData->halfHeight = _aircraft.halfHeight;
 
-    if (strstr(Airliner, prefix) != NULL) {
+    if (strstr(Airliner, prefixShort) != NULL) {
         iconData->bmp = _aircraft.otherBmp;
         return;
     }
 
-    if (strstr(Large_Airliner, prefix) != NULL) {
+    if (strstr(Large_Airliner, prefixShort) != NULL) {
         iconData->bmp = _aircraft.largeOtherBmp;
         return;
     }
 
-    if (strstr(Jet, prefix) != NULL) {
+    if (strstr(Jet, prefixShort) != NULL) {
         iconData->bmp = _aircraft.jetOtherBmp;
         return;
     }
 
-    if (strstr(Military_Jet, prefix) != NULL) {
-        iconData->bmp = _aircraft.militaryJetBmp;
+    if (strstr(Military_Heli, prefixShort) != NULL || strstr(Military_Heli, prefixCallsign) != NULL) {
+        iconData->bmp = _aircraft.militaryHeliBmp;
+        iconData->isMilitary = true;
         return;
     }
 
-    if (strstr(Military_Other, prefix) != NULL) {
+    if (strstr(Military_Jet, prefixShort) != NULL) {
+        iconData->bmp = _aircraft.militaryJetBmp;
+        iconData->isMilitary = true;
+        return;
+    }
+
+    if (strstr(Military_Small, prefixShort) != NULL || strstr(Military_Small, prefixCallsign) != NULL) {
+        iconData->bmp = _aircraft.militarySmallBmp;
+        iconData->isMilitary = true;
+        return;
+    }
+
+    if (strstr(Military_Other, prefixShort) != NULL) {
         iconData->bmp = _aircraft.militaryOtherBmp;
+        iconData->isMilitary = true;
         return;
     }
 
     // Default
     if (wingSpan > WINGSPAN_SMALL) {
-iconData->bmp = _aircraft.otherBmp;
-return;
+        iconData->bmp = _aircraft.otherBmp;
+        return;
     }
 
     iconData->bmp = _aircraft.smallOtherBmp;
@@ -1390,7 +1536,11 @@ void drawOtherAircraft()
         // Don't draw other aircraft if outside the display
         if (drawOther(&displayPos1, &displayPos2, &_otherAircraftData[i].loc, &pos)) {
             IconData iconData;
-            getIconData(_otherAircraftData[i].model, _otherAircraftData[i].alt, &iconData, _otherAircraftData[i].wingSpan);
+            getIconData(_otherAircraftData[i].model, _otherAircraftData[i].callsign, _otherAircraftData[i].alt, &iconData, _otherAircraftData[i].wingSpan);
+
+            if (_showAiMilitaryOnly && !iconData.isMilitary) {
+                continue;
+            }
 
             al_draw_scaled_rotated_bitmap(iconData.bmp, iconData.halfWidth, iconData.halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _otherAircraftData[i].heading * DegreesToRadians, 0);
 
@@ -1399,11 +1549,13 @@ void drawOtherAircraft()
                     // Draw tag to right of aircraft
                     al_draw_bitmap(_otherTag[i].tag.bmp, pos.x + 1 + iconData.halfHeight * 1.5 * _aircraft.scale, pos.y - _otherTag[i].tag.height / 2.0, 0);
 
-                    // Draw second tag with alt and speed
-                    if (_otherTag[i].moreTag.bmp == NULL) {
-                        createTagBitmap(_otherTag[i].moreTagText, &_otherTag[i].moreTag);
+                    if (_showAiInfoTags) {
+                        // Draw second tag with alt and speed
+                        if (_otherTag[i].moreTag.bmp == NULL) {
+                            createTagBitmap(_otherTag[i].moreTagText, &_otherTag[i].moreTag);
+                        }
+                        al_draw_bitmap(_otherTag[i].moreTag.bmp, pos.x + 1 + iconData.halfHeight * 1.5 * _aircraft.scale, pos.y + _otherTag[i].tag.height / 2.0, 0);
                     }
-                    al_draw_bitmap(_otherTag[i].moreTag.bmp, pos.x + 1 + iconData.halfHeight * 1.5 * _aircraft.scale, pos.y + _otherTag[i].tag.height / 2.0, 0);
                 }
             }
         }
@@ -1460,24 +1612,25 @@ void drawAiObjects()
     }
 
     if (last == -1) {
-        *_aiTitle = '\0';
-    }
-    else {
-        // Show info in window title
-        if (strncmp(_aiTitle, _aiTrail[last].callsign, strlen(_aiTrail[last].callsign)) != 0) {
-            sprintf(_aiTitle, "%s   %s   %s", _aiTrail[last].callsign, _aiTrail[last].airline, _aiTrail[last].modelType);
-            if (strcmp(_aiTrail[last].fromAirport, "Unknown") != 0) {
-                char moreTitle[256];
-                sprintf(moreTitle, "    %s", _aiTrail[last].fromAirport);
-                strcat(_aiTitle, moreTitle);
-            }
-            if (strcmp(_aiTrail[last].toAirport, "Unknown") != 0) {
-                char moreTitle[256];
-                sprintf(moreTitle, "    %s", _aiTrail[last].toAirport);
-                strcat(_aiTitle, moreTitle);
-            }
+        if (*_aiTitle != '\0') {
+            *_aiTitle = '\0';
             _titleState = -2;
         }
+    }
+    else if (strncmp(_aiTitle, _aiTrail[last].callsign, strlen(_aiTrail[last].callsign)) != 0) {
+        // Show info in window title
+        sprintf(_aiTitle, "%s   %s   %s", _aiTrail[last].callsign, _aiTrail[last].airline, _aiTrail[last].modelType);
+        if (strcmp(_aiTrail[last].fromAirport, "Unknown") != 0) {
+            char moreTitle[256];
+            sprintf(moreTitle, "    %s", _aiTrail[last].fromAirport);
+            strcat(_aiTitle, moreTitle);
+        }
+        if (strcmp(_aiTrail[last].toAirport, "Unknown") != 0) {
+            char moreTitle[256];
+            sprintf(moreTitle, "    %s", _aiTrail[last].toAirport);
+            strcat(_aiTitle, moreTitle);
+        }
+        _titleState = -2;
     }
 
     // If we aren't currently connected draw the AI aircraft as they won't be injected
@@ -1488,31 +1641,42 @@ void drawAiObjects()
             // Don't draw aircraft if outside the display
             if (drawOther(&displayPos1, &displayPos2, &_aiAircraft[i].loc, &pos)) {
                 IconData iconData;
-                getIconData(_aiAircraft[i].model, _aiAircraft[i].alt, &iconData, 0);
+                getIconData(_aiAircraft[i].model, _aiAircraft[i].callsign, _aiAircraft[i].alt, &iconData, 0);
 
-                al_draw_scaled_rotated_bitmap(iconData.bmp, iconData.halfWidth, iconData.halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _aiAircraft[i].heading * DegreesToRadians, 0);
+                if (_showAiMilitaryOnly && !iconData.isMilitary) {
+                    continue;
+                }
 
-                if (_showTags) {
-                    if (_aiAircraft[i].tagData.tag.bmp == NULL) {
-                        createTagBitmap(_aiAircraft[i].tagData.tagText, &_aiAircraft[i].tagData.tag);
+                try {
+                    al_draw_scaled_rotated_bitmap(iconData.bmp, iconData.halfWidth, iconData.halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _aiAircraft[i].heading * DegreesToRadians, 0);
+
+                    if (_showTags) {
+                        if (_aiAircraft[i].tagData.tag.bmp == NULL) {
+                            createTagBitmap(_aiAircraft[i].tagData.tagText, &_aiAircraft[i].tagData.tag);
+                        }
+
+                        // Draw tag to right of aircraft
+                        al_draw_bitmap(_aiAircraft[i].tagData.tag.bmp, pos.x + 1 + iconData.halfHeight * _aircraft.scale, pos.y - _aiAircraft[i].tagData.tag.height / 2.0, 0);
+
+                        if (_showAiInfoTags) {
+                            // Add a second tag with alt and speed
+                            sprintf(moreTagText, "%.0lf %.0lf", _aiAircraft[i].alt, _aiAircraft[i].speed);
+                            if (strcmp(_aiAircraft[i].tagData.moreTagText, moreTagText) != 0) {
+                                strcpy(_aiAircraft[i].tagData.moreTagText, moreTagText);
+                                cleanupBitmap(_aiAircraft[i].tagData.moreTag.bmp);
+                                _aiAircraft[i].tagData.moreTag.bmp = NULL;
+                            }
+
+                            if (_aiAircraft[i].tagData.moreTag.bmp == NULL) {
+                                createTagBitmap(_aiAircraft[i].tagData.moreTagText, &_aiAircraft[i].tagData.moreTag);
+                            }
+
+                            al_draw_bitmap(_aiAircraft[i].tagData.moreTag.bmp, pos.x + 1 + iconData.halfHeight * _aircraft.scale, pos.y + _aiAircraft[i].tagData.tag.height / 2.0, 0);
+                        }
                     }
-
-                    // Draw tag to right of aircraft
-                    al_draw_bitmap(_aiAircraft[i].tagData.tag.bmp, pos.x + 1 + iconData.halfHeight * _aircraft.scale, pos.y - _aiAircraft[i].tagData.tag.height / 2.0, 0);
-
-                    // Add a second tag with alt and speed
-                    sprintf(moreTagText, "%.0lf %.0lf", _aiAircraft[i].alt, _aiAircraft[i].speed);
-                    if (strcmp(_aiAircraft[i].tagData.moreTagText, moreTagText) != 0) {
-                        strcpy(_aiAircraft[i].tagData.moreTagText, moreTagText);
-                        cleanupBitmap(_aiAircraft[i].tagData.moreTag.bmp);
-                        _aiAircraft[i].tagData.moreTag.bmp = NULL;
-                    }
-
-                    if (_aiAircraft[i].tagData.moreTag.bmp == NULL) {
-                        createTagBitmap(_aiAircraft[i].tagData.moreTagText, &_aiAircraft[i].tagData.moreTag);
-                    }
-
-                    al_draw_bitmap(_aiAircraft[i].tagData.moreTag.bmp, pos.x + 1 + iconData.halfHeight * _aircraft.scale, pos.y + _aiAircraft[i].tagData.tag.height / 2.0, 0);
+                }
+                catch (...) {
+                    // Do nothing
                 }
             }
         }
@@ -1549,24 +1713,29 @@ void drawAiObjects()
                 continue;
             }
 
-            al_draw_scaled_rotated_bitmap(bmp, halfWidth, halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _aiFixed[i].heading * DegreesToRadians, 0);
+            try {
+                al_draw_scaled_rotated_bitmap(bmp, halfWidth, halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _aiFixed[i].heading * DegreesToRadians, 0);
 
-            if (_showTags) {
-                if (_aiFixed[i].tagData.tag.bmp == NULL) {
-                    createTagBitmap(_aiFixed[i].tagData.tagText, &_aiFixed[i].tagData.tag);
+                if (_showTags) {
+                    if (_aiFixed[i].tagData.tag.bmp == NULL) {
+                        createTagBitmap(_aiFixed[i].tagData.tagText, &_aiFixed[i].tagData.tag);
+                    }
+
+                    // Draw tag to right
+                    al_draw_bitmap(_aiFixed[i].tagData.tag.bmp, pos.x + tagShift * _aircraft.scale, pos.y - _aiFixed[i].tagData.tag.height / 4, 0);
                 }
 
-                // Draw tag to right
-                al_draw_bitmap(_aiFixed[i].tagData.tag.bmp, pos.x + tagShift * _aircraft.scale, pos.y - _aiFixed[i].tagData.tag.height / 4, 0);
+                if (_showFixedTags && *_aiFixed[i].tagData.moreTagText != '\0') {
+                    if (_aiFixed[i].tagData.moreTag.bmp == NULL) {
+                        createTagBitmap(_aiFixed[i].tagData.moreTagText, &_aiFixed[i].tagData.moreTag);
+                    }
+
+                    // Draw tag to right
+                    al_draw_bitmap(_aiFixed[i].tagData.moreTag.bmp, pos.x + tagShift * _aircraft.scale, pos.y + _aiFixed[i].tagData.tag.height * 3 / 4, 0);
+                }
             }
-
-            if (_showFixedTags && *_aiFixed[i].tagData.moreTagText != '\0') {
-                if (_aiFixed[i].tagData.moreTag.bmp == NULL) {
-                    createTagBitmap(_aiFixed[i].tagData.moreTagText, &_aiFixed[i].tagData.moreTag);
-                }
-
-                // Draw tag to right
-                al_draw_bitmap(_aiFixed[i].tagData.moreTag.bmp, pos.x + tagShift * _aircraft.scale, pos.y + _aiFixed[i].tagData.tag.height * 3 / 4, 0);
+            catch (...) {
+                // Do nothing
             }
         }
     }
@@ -1730,6 +1899,9 @@ void doRender()
 /// </summary>
 void newChart()
 {
+    char oldChart[512];
+    strcpy(oldChart, _settings.chart);
+
     al_set_window_title(_display, "Select Chart");
 
     if (!fileSelectorDialog(al_get_win_window_handle(_display))) {
@@ -1740,16 +1912,17 @@ void newChart()
     if (initChart()) {
         // Save the last loaded chart name
         saveSettings();
+        strcpy(_previousChart, oldChart);
     }
 }
 
 /// <summary>
 /// Find all the .calibration files in the parent folder and use the calibrated coordinates
-/// to work out which chart the aircraft is closest to, then load this chart.
+/// to work out which chart the supplied location is closest to, then load this chart.
 /// </summary>
-void closestChart()
+void closestChart(Locn* loc)
 {
-    if (_aircraftData.loc.lat == MAXINT) {
+    if (loc->lat == MAXINT) {
         return;
     }
 
@@ -1757,12 +1930,16 @@ void closestChart()
 
     int count;
     findCalibratedCharts(calib, &count);
+
     if (count == 0) {
         free(calib);
         return;
     }
 
-    CalibratedData* closest = findClosestChart(calib, count, &_aircraftData.loc);
+    char oldChart[512];
+    strcpy(oldChart, _settings.chart);
+
+    CalibratedData* closest = findClosestChart(calib, count, loc);
     strcpy(_settings.chart, closest->filename);
     free(calib);
 
@@ -1780,6 +1957,7 @@ void closestChart()
     if (initChart()) {
         // Save the chart name
         saveSettings();
+        strcpy(_previousChart, oldChart);
     }
 }
 
@@ -2114,6 +2292,13 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
                 chartPosToLocation(posMax.x, posMin.y, &locMax);
 
                 for (int i = 0; i < _aiAircraftCount; i++) {
+                    IconData iconData;
+                    getIconData(_aiAircraft[i].model, _aiAircraft[i].callsign, _aiAircraft[i].alt, &iconData, 0);
+
+                    if (_showAiMilitaryOnly && !iconData.isMilitary) {
+                        continue;
+                    }
+
                     if (_aiAircraft[i].loc.lat >= locMin.lat && _aiAircraft[i].loc.lat <= locMax.lat &&
                         _aiAircraft[i].loc.lon >= locMin.lon && _aiAircraft[i].loc.lon <= locMax.lon)
                     {
@@ -2190,7 +2375,7 @@ void showChart()
     }
 
     // If aircraft is initialised always start on the closest chart
-    closestChart();
+    closestChart(&_aircraftData.loc);
 
     doUpdate();
 

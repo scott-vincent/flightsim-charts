@@ -12,7 +12,6 @@ extern bool _quit;
 extern bool _showAi;
 extern bool _noConnect;
 
-
 // Variables
 LocData _locData;
 WindData _windData;
@@ -35,7 +34,7 @@ TeleportData _teleport;
 SnapshotData _snapshot;
 FollowData _follow;
 bool _listening = false;
-char* _remoteIp;
+char _remoteIp[32];
 SOCKET _sockfd;
 sockaddr_in _sendAddr;
 char* _listenerData;
@@ -51,6 +50,7 @@ AI_Trail _aiTrail[3];
 char _watchCallsign[16];
 bool _watchInProgress = false;
 char _lastImage[3][256];
+bool _clearAll = false;
 
 
 void stopFollowing(bool force = false)

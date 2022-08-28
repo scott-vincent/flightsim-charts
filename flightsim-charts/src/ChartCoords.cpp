@@ -61,15 +61,29 @@ void locationToChartPos(Locn* loc, Position* pos)
     double lonCalibDiff = _chartData.lon[1] - _chartData.lon[0];
     double lonDiff = loc->lon - _chartData.lon[0];
     double xScale = lonDiff / lonCalibDiff;
+    int xCalibDiff = _chartData.x[1] - _chartData.x[0];
+    pos->x = _chartData.x[0] + xCalibDiff * xScale;
 
     double latCalibDiff = _chartData.lat[1] - _chartData.lat[0];
-    double latDiff = loc->lat - _chartData.lat[0];
+    double latDiff;
+
+    if (abs(latCalibDiff) < 2) {
+        // Assume linear lat scale
+        latDiff = loc->lat - _chartData.lat[0];
+    }
+    else {
+        // Account for map projection (lat stretches towards poles).
+        // Use rough and ready formula y = ((lat + 26.4)^2 / 7.9) - 60
+        double lat0 = (pow(_chartData.lat[0] + 26.4, 2) / 7.9) - 60;
+        double lat1 = (pow(_chartData.lat[1] + 26.4, 2) / 7.9) - 60;
+        double yPos = (pow(loc->lat + 26.4, 2) / 7.9) - 60;
+
+        latCalibDiff = lat1 - lat0;
+        latDiff = yPos - lat0;
+    }
+
     double yScale = latDiff / latCalibDiff;
-
-    int xCalibDiff = _chartData.x[1] - _chartData.x[0];
     int yCalibDiff = _chartData.y[1] - _chartData.y[0];
-
-    pos->x = _chartData.x[0] + xCalibDiff * xScale;
     pos->y = _chartData.y[0] + yCalibDiff * yScale;
 }
 

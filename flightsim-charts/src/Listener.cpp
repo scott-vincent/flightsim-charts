@@ -35,7 +35,6 @@ extern int _aiModelMatchCount;
 extern AI_ModelMatch _aiModelMatch[Max_AI_ModelMatch];
 extern AI_Trail _aiTrail[3];
 extern bool _showAiPhotos;
-extern char _lastImage[3][256];
 extern bool _clearAll;
 
 
@@ -140,9 +139,6 @@ void listenerInit()
     _aiTrail[0].count = 0;
     _aiTrail[1].count = 0;
     _aiTrail[2].count = 0;
-    *_lastImage[0] = '\0';
-    *_lastImage[1] = '\0';
-    *_lastImage[2] = '\0';
 
     srand(time(NULL));
 
@@ -327,7 +323,7 @@ void removeStale(bool force = false)
         if (force || now - _aiAircraft[i].lastUpdated > StaleSecs) {
             // Remove aircraft
             _aiAircraftCount--;
-            cleanupBitmap(_aiAircraft[i].tagData.tag.bmp);
+            cleanupTagBitmap(&_aiAircraft[i].tagData.tag);
 
             if (_aiAircraft[i].objectId != -1) {
                 if (SimConnect_AIRemoveObject(hSimConnect, _aiAircraft[i].objectId, REQ_AI_AIRCRAFT) != 0) {
@@ -360,12 +356,8 @@ void removeFixed()
     int i = _aiFixedCount - 1;
     while (i >= 0) {
         _aiFixedCount--;
-        ALLEGRO_BITMAP *bmp = _aiFixed[i].tagData.tag.bmp;
-        _aiFixed[i].tagData.tag.bmp = NULL;
-        cleanupBitmap(bmp);
-        bmp = _aiFixed[i].tagData.moreTag.bmp;
-        _aiFixed[i].tagData.moreTag.bmp = NULL;
-        cleanupBitmap(bmp);
+        cleanupTagBitmap(&_aiFixed[i].tagData.tag);
+        cleanupTagBitmap(&_aiFixed[i].tagData.moreTag);
         i--;
     }
 }
@@ -419,14 +411,6 @@ int getTrail(char *line)
     }
 
     _aiTrail[t].count = i;
-
-    if (strcmp(_lastImage[0], _aiTrail[t].image) != 0 && strcmp(_lastImage[1], _aiTrail[t].image) != 0 && strcmp(_lastImage[2], _aiTrail[t].image) != 0) {
-        strcpy(_lastImage[t], _aiTrail[t].image);
-        if (_showAiPhotos && strcmp(_lastImage[t], "None") != 0) {
-            // Launch a browser to view the aircraft image
-            ShellExecute(0, 0, _lastImage[t], 0, 0, SW_SHOW);
-        }
-    }
 
     return t;
 }
@@ -651,6 +635,22 @@ bool listenerRead(const char* request, int waitMillis, bool immediate)
                 
                 if (strncmp(&data[8], "all", 3) == 0 || strncmp(&data[8], "wayp", 4) == 0) {
                     _listenerInitFetch = true;
+                }
+            }
+
+            char* imgPos = strstr(data, "Image: ");
+            if (imgPos != NULL) {
+                char img[256];
+                strncpy(img, imgPos + 7, 254);
+                img[255] = '\0';
+                char* eol = strchr(img, '\n');
+                if (eol != NULL) {
+                    *eol = '\0';
+                }
+
+                if (_showAiPhotos) {
+                    // Launch a browser to view the aircraft image
+                    ShellExecute(0, 0, img, 0, 0, SW_SHOW);
                 }
             }
         }

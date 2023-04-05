@@ -49,7 +49,6 @@ AI_ModelMatch _aiModelMatch[Max_AI_ModelMatch];
 AI_Trail _aiTrail[3];
 char _watchCallsign[16];
 bool _watchInProgress = false;
-char _lastImage[3][256];
 bool _clearAll = false;
 
 

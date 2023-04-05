@@ -2,7 +2,7 @@
 #include <iostream>
 #include <thread>
 
-const char* versionString = "v1.6.5";
+const char* versionString = "v1.6.7";
 bool _quit = false;
 bool _showAi = false;
 bool _noConnect = false;
@@ -12,7 +12,7 @@ void showChart();
 
 int main(int argc, char **argv)
 {
-    printf("FlightSim Charts %s Copyright (c) 2022 Scott Vincent\n", versionString);
+    printf("FlightSim Charts %s Copyright (c) 2023 Scott Vincent\n", versionString);
 
     for (int i = 1; i < argc; i++) {
         if (_stricmp(argv[i], "showai") == 0) {

@@ -305,6 +305,7 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
     }
     else {
         topX.dist = 999999;
+        topX.val = 0;
     }
 
     Intersect bottomX;
@@ -316,6 +317,7 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
     }
     else {
         bottomX.dist = 999999;
+        bottomX.val = 0;
     }
 
     Intersect leftY;
@@ -327,6 +329,7 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
     }
     else {
         leftY.dist = 999999;
+        leftY.val = 0;
     }
 
     Intersect rightY;
@@ -338,6 +341,7 @@ void aircraftLocToChartPos(AircraftPosition* adjustedPos)
     }
     else {
         rightY.dist = 999999;
+        rightY.val = 0;
     }
 
     // Find the closest intersect (if any)

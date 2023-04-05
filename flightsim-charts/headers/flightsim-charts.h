@@ -15,14 +15,14 @@ const char DegreesSymbol[] = "\xC2\xB0";
 const char Airliner[] = "_A20_A21_A30_A31_A32_A33_BCS_B38_B73_B75_B76_E19_E29_E75_";
 const char Large_Airliner[] = "_A34_A35_A38_A3S_B74_B77_B78_";
 
-const char Heli[] = "_A10_A13_A16_A18_AS5_B06_B50_B17_CLO_EC3_EC4_EC5_EC7_EXP_LYN_MM1_R22_R44_R66_S76_WAS_";
-const char Jet[] = "_AST_BE4_C25_C51_C52_C55_C56_C68_C75_CL3_CL6_CRJ_E13_E14_E35_E50_E55_EA5_F2T_F90_FA2_FA7_FA8_G28_GA5_GAL_GL5_GL7_GLE_GLF_H25_HDJ_LJ3_LJ7_PC2_PRM_";
+const char Heli[] = "_A10_A13_A16_A18_AS5_B06_B50_B17_CLO_EC3_EC4_EC5_EC7_EXP_MM1_R22_R44_R66_S76_WAS_";
+const char Jet[] = "_AST_BE4_C25_C51_C52_C55_C56_C68_C75_CL3_CL6_CRJ_E13_E14_E35_E50_E55_EA5_F2T_F90_FA2_FA7_FA8_G28_GA5_GA6_GAL_GL5_GL7_GLE_GLF_H25_HDJ_LJ3_LJ7_PC2_PRM_";
 const char Turboprop[] = "_AT4_AT7_B35_BE2_D22_D32_DH8_DHC_P18_SC7_SF3_C303_";
 
-const char Military_Heli[] = "_H47_UGLY1_PUM_";  // UGLY = Apache
-const char Military_Jet[] = "_SB3_F15_HAW_HUN_";
+const char Military_Heli[] = "_H47_H64_LYN_PUM_UGLY1_"; // UGLY = Apache
+const char Military_Jet[] = "_SB3_F15_HAW_HUN_REDAR_";  // REDAR = Red Arrow
 const char Military_Small[] = "_SPI_GTCHI_P51_FUR_";    // GTCHI = Spitfire
-const char Military_Other[] = "_A40_C13_C30_E39_E3C_K35_LAN_";
+const char Military_Other[] = "_A40_B52_C13_C30_E39_E3C_K35_LAN_";
 
 struct Position {
     int x;
@@ -232,3 +232,4 @@ int showMessage(const char* message, bool isError, const char* title = NULL, boo
 void createTagText(char* callsign, char* model, char* tagText);
 void createTagBitmap(char *tagText, DrawData* tag, bool isMeasure = false);
 void cleanupBitmap(ALLEGRO_BITMAP* bmp);
+void cleanupTagBitmap(DrawData* tag);

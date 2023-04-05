@@ -57,7 +57,6 @@ extern AI_Aircraft _aiAircraft[Max_AI_Aircraft];
 extern AI_Trail _aiTrail[3];
 extern char _watchCallsign[16];
 extern bool _watchInProgress;
-extern char _lastImage[3][256];
 extern char* _listenerHome;
 extern bool _clearAll;
 
@@ -85,6 +84,7 @@ DrawData _windInfo;
 DrawData _windInfoCopy;
 MouseData _mouseData;
 ChartData _chartData;
+HANDLE _bmpMutex = NULL;
 Settings _settings;
 ALLEGRO_MOUSE_STATE _mouse;
 OtherData _snapshotOtherData[MAX_AIRCRAFT];
@@ -114,8 +114,10 @@ char _closestAircraft[32];
 bool _menuCallback = false;
 char _aiTitle[512] = "";
 bool _ctrlPressed;
+bool _altPressed;
 Position _measureStartPos;
 Locn _measureStartLoc;
+Locn _altHomeLoc;
 TagData _measureTag;
 bool _ignoreNextRelease;
 char _aiHome[256];
@@ -129,14 +131,18 @@ enum MENU_ITEMS {
     MENU_LOAD_CLOSEST_TO_CLIPBOARD,
     MENU_LOCATE_AIRCRAFT,
     MENU_FIX_CRASH,
+    MENU_INCREASE_ALTITUDE,
     MENU_ROTATE_AGAIN,
-    MENU_ROTATE_LEFT_20,
-    MENU_ROTATE_RIGHT_20,
-    MENU_ROTATE_LEFT_90,
+    MENU_ROTATE_180,
     MENU_ROTATE_RIGHT_90,
+    MENU_ROTATE_LEFT_90,
+    MENU_ROTATE_RIGHT_20,
+    MENU_ROTATE_LEFT_20,
     MENU_TELEPORT_HERE,
     MENU_TELEPORT_HERE_GROUND,
     MENU_TELEPORT_HERE_AIR,
+    MENU_TELEPORT_ALT_INC_1,
+    MENU_TELEPORT_ALT_INC_2,
     MENU_TELEPORT_CLIPBOARD,
     MENU_TELEPORT_SET_AI_HOME_HERE,
     MENU_TELEPORT_SET_AI_HOME_CLIPBOARD,
@@ -353,6 +359,8 @@ void initVars()
     _windInfo.bmp = NULL;
     _windInfoCopy.bmp = NULL;
 
+    _bmpMutex = CreateMutex(NULL, FALSE, NULL);
+
     _mouseData.dragging = false;
     _mouseData.dragX = 0;
     _mouseData.dragY = 0;
@@ -375,8 +383,10 @@ void initVars()
     _clipboardPos.x = -1;
     *_closestAircraft = '\0';
     _measureStartPos.x = MAXINT;
+    _altHomeLoc.lat = MAXINT;
     _measureTag.tag.bmp = NULL;
     *_previousChart = '\0';
+    _windData.direction = -1;
 }
 
 /// <summary>
@@ -416,15 +426,18 @@ HMENU createMenu()
     AppendMenu(loadMenu, MF_STRING, MENU_LOAD_CLOSEST_TO_CLIPBOARD, "Closest to clipboard location");
 
     HMENU rotateMenu = CreatePopupMenu();
-    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_LEFT_20, "-20°");
-    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_RIGHT_20, "+20°");
-    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_LEFT_90, "-90°");
+    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_180, "180°");
     AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_RIGHT_90, "+90°");
+    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_LEFT_90, "-90°");
+    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_RIGHT_20, "+20°");
+    AppendMenu(rotateMenu, MF_STRING, MENU_ROTATE_LEFT_20, "-20°");
 
     HMENU teleportMenu = CreatePopupMenu();
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_HERE_GROUND, "To here (on ground)");
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_HERE, "To here (same alt and speed)");
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_HERE_AIR, "To here (2000ft @ 150kn)");
+    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_ALT_INC_1, "Increase altitude (+1000ft)");
+    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_ALT_INC_2, "Increase altitude (+5000ft)");
     AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_CLIPBOARD, "To clipboard location");
     if (_showAi) {
         AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_SET_AI_HOME_HERE, "Set AI Home to here");
@@ -508,13 +521,16 @@ void updateMenu(HMENU menu)
     EnableMenuItem(menu, MENU_LOCATE_AIRCRAFT, enabledState(active && calibrated));
     EnableMenuItem(menu, MENU_FIX_CRASH, enabledState(active && calibrated && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_ROTATE_AGAIN, enabledState(active && !_teleport.inProgress && _lastRotate != MAXINT));
-    EnableMenuItem(menu, MENU_ROTATE_LEFT_20, enabledState(active && !_teleport.inProgress));
-    EnableMenuItem(menu, MENU_ROTATE_RIGHT_20, enabledState(active && !_teleport.inProgress));
-    EnableMenuItem(menu, MENU_ROTATE_LEFT_90, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_ROTATE_180, enabledState(active && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_ROTATE_RIGHT_90, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_ROTATE_LEFT_90, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_ROTATE_RIGHT_20, enabledState(active && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_ROTATE_LEFT_20, enabledState(active && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_TELEPORT_HERE_GROUND, enabledState(active && calibrated && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_TELEPORT_HERE, enabledState(active && calibrated && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_TELEPORT_HERE_AIR, enabledState(active && calibrated && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_TELEPORT_ALT_INC_1, enabledState(active && calibrated && !_teleport.inProgress));
+    EnableMenuItem(menu, MENU_TELEPORT_ALT_INC_2, enabledState(active && calibrated && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_TELEPORT_CLIPBOARD, enabledState(active && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_TELEPORT_RESTORE_LOCATION, enabledState(active && !_snapshot.save && _snapshot.loc.lat != MAXINT));
     EnableMenuItem(menu, MENU_TELEPORT_SAVE_LOCATION, enabledState(active && !_snapshot.save));
@@ -658,14 +674,14 @@ void actionMenuItem()
         rotateAircraft(_lastRotate);
         break;
     }
-    case MENU_ROTATE_LEFT_20:
+    case MENU_ROTATE_180:
     {
-        rotateAircraft(-20);
+        rotateAircraft(180);
         break;
     }
-    case MENU_ROTATE_RIGHT_20:
+    case MENU_ROTATE_RIGHT_90:
     {
-        rotateAircraft(20);
+        rotateAircraft(90);
         break;
     }
     case MENU_ROTATE_LEFT_90:
@@ -673,9 +689,14 @@ void actionMenuItem()
         rotateAircraft(-90);
         break;
     }
-    case MENU_ROTATE_RIGHT_90:
+    case MENU_ROTATE_RIGHT_20:
     {
-        rotateAircraft(90);
+        rotateAircraft(20);
+        break;
+    }
+    case MENU_ROTATE_LEFT_20:
+    {
+        rotateAircraft(-20);
         break;
     }
     case MENU_TELEPORT_HERE_GROUND:
@@ -708,6 +729,36 @@ void actionMenuItem()
         _teleport.heading = _aircraftData.heading;
         _teleport.alt = 2000;
         _teleport.speed = 150;
+        _teleport.setAltSpeed = true;
+        _teleport.inProgress = true;
+        break;
+    }
+    case MENU_TELEPORT_ALT_INC_1:
+    {
+        // Centre chart on current aircraft location and increase altitude by 1000ft
+        Position pos;
+        locationToChartPos(&_aircraftData.loc, &pos);
+        _chart.x = pos.x;
+        _chart.y = pos.y;
+        chartPosToLocation(pos.x, pos.y, &_teleport.loc);
+        _teleport.heading = _aircraftData.heading;
+        _teleport.alt = _aircraftData.alt + 1000;
+        _teleport.speed = _aircraftData.speed;
+        _teleport.setAltSpeed = true;
+        _teleport.inProgress = true;
+        break;
+    }
+    case MENU_TELEPORT_ALT_INC_2:
+    {
+        // Centre chart on current aircraft location and increase altitude by 5000ft
+        Position pos;
+        locationToChartPos(&_aircraftData.loc, &pos);
+        _chart.x = pos.x;
+        _chart.y = pos.y;
+        chartPosToLocation(pos.x, pos.y, &_teleport.loc);
+        _teleport.heading = _aircraftData.heading;
+        _teleport.alt = _aircraftData.alt + 5000;
+        _teleport.speed = _aircraftData.speed;
         _teleport.setAltSpeed = true;
         _teleport.inProgress = true;
         break;
@@ -800,9 +851,6 @@ void actionMenuItem()
     case MENU_SHOW_AI_PHOTOS:
     {
         _showAiPhotos = !_showAiPhotos;
-        *_lastImage[0] = '\0';
-        *_lastImage[1] = '\0';
-        *_lastImage[2] = '\0';
         break;
     }
     case MENU_SHOW_AI_MILITARY_ONLY:
@@ -958,6 +1006,27 @@ void cleanupBitmap(ALLEGRO_BITMAP* bmp)
     }
 }
 
+void cleanupTagBitmap(DrawData *tag)
+{
+    if (tag->bmp != NULL) {
+        if (WaitForSingleObject(_bmpMutex, 1000) != 0) {
+            printf("cleanupTagBitmap mutex unavailable\n");
+            return;
+        }
+
+        try {
+            cleanupBitmap(tag->bmp);
+            tag->bmp = NULL;
+        }
+        catch (std::exception e) {
+            // Do nothing
+        }
+
+        // Free mutex
+        ReleaseMutex(_bmpMutex);
+    }
+}
+
 /// <summary>
 /// Cleanup Allegro
 /// </summary>
@@ -989,32 +1058,27 @@ void cleanup()
     cleanupBitmap(_arrow.bmp);
     cleanupBitmap(_windInfo.bmp);
     cleanupBitmap(_windInfoCopy.bmp);
-    cleanupBitmap(_measureTag.tag.bmp);
+    cleanupTagBitmap(&_measureTag.tag);
 
     // Clenaup tags
     for (int i = 0; i < _tagCount; i++) {
-        cleanupBitmap(_otherTag[i].tag.bmp);
+        cleanupTagBitmap(&_otherTag[i].tag);
     }
 
     for (int i = 0; i < _aiAircraftCount; i++) {
-        ALLEGRO_BITMAP* bmp = _aiAircraft[i].tagData.tag.bmp;
-        _aiAircraft[i].tagData.tag.bmp = NULL;
-        cleanupBitmap(bmp);
-
-        bmp = _aiAircraft[i].tagData.moreTag.bmp;
-        _aiAircraft[i].tagData.moreTag.bmp = NULL;
-        cleanupBitmap(bmp);
+        cleanupTagBitmap(&_aiAircraft[i].tagData.tag);
+        cleanupTagBitmap(&_aiAircraft[i].tagData.moreTag);
     }
 
     for (int i = 0; i < _aiFixedCount; i++) {
-        ALLEGRO_BITMAP* bmp = _aiFixed[i].tagData.tag.bmp;
-        _aiFixed[i].tagData.tag.bmp = NULL;
-        cleanupBitmap(bmp);
-
-        bmp = _aiFixed[i].tagData.moreTag.bmp;
-        _aiFixed[i].tagData.moreTag.bmp = NULL;
-        cleanupBitmap(bmp);
+        cleanupTagBitmap(&_aiFixed[i].tagData.tag);
+        cleanupTagBitmap(&_aiFixed[i].tagData.moreTag);
     }
+
+    if (_bmpMutex) {
+        CloseHandle(_bmpMutex);
+    }
+
 
     if (_timer) {
         al_destroy_timer(_timer);
@@ -1462,7 +1526,7 @@ void getIconData(char *model, char *callsign, int altitude, IconData* iconData, 
         return;
     }
 
-    if (strstr(Military_Jet, prefixShort) != NULL) {
+    if (strstr(Military_Jet, prefixShort) != NULL || strstr(Military_Jet, prefixCallsign) != NULL) {
         iconData->bmp = _aircraft.militaryJetBmp;
         iconData->isMilitary = true;
         return;
@@ -1663,7 +1727,7 @@ void drawAiObjects()
                             sprintf(moreTagText, "%.0lf %.0lf", _aiAircraft[i].alt, _aiAircraft[i].speed);
                             if (strcmp(_aiAircraft[i].tagData.moreTagText, moreTagText) != 0) {
                                 strcpy(_aiAircraft[i].tagData.moreTagText, moreTagText);
-                                cleanupBitmap(_aiAircraft[i].tagData.moreTag.bmp);
+                                cleanupTagBitmap(&_aiAircraft[i].tagData.moreTag);
                                 _aiAircraft[i].tagData.moreTag.bmp = NULL;
                             }
 
@@ -1826,6 +1890,18 @@ void render()
         ALLEGRO_COLOR colour = al_map_rgb(0x60, 0x40, 0x20);
         al_draw_line(startPos.x, startPos.y, endPos.x, endPos.y, colour, 2);
         al_draw_bitmap(_measureTag.tag.bmp, midPos.x - 20, midPos.y - 5, 0);
+    }
+
+    if (_altHomeLoc.lat != MAXINT) {
+        // Show additional home icon
+        Position pos;
+        Position altHomePos;
+        locationToChartPos(&_altHomeLoc, &pos);
+        chartToDisplayPos(pos.x, pos.y, &altHomePos);
+
+        int halfWidth = _aircraft.smallHalfWidth / 2;
+        int halfHeight = _aircraft.smallHalfHeight / 2;
+        al_draw_scaled_rotated_bitmap(_aircraft.homeBmp, halfWidth, halfHeight, altHomePos.x, altHomePos.y, _aircraft.scale, _aircraft.scale, 25 * DegreesToRadians, 0);
     }
 
     if (_windDirection != -1) {
@@ -2068,8 +2144,7 @@ void updateOtherTags()
 
                 if (strcmp(_otherTag[i].moreTagText, moreTagText) != 0) {
                     strcpy(_otherTag[i].moreTagText, moreTagText);
-                    cleanupBitmap(_otherTag[i].moreTag.bmp);
-                    _otherTag[i].moreTag.bmp = NULL;
+                    cleanupTagBitmap(&_otherTag[i].moreTag);
                 }
                 break;
             }
@@ -2101,7 +2176,7 @@ void updateOtherTags()
 
 void updateWind()
 {
-    if (_windDirection == -1) {
+    if (_windData.direction == -1) {
         return;
     }
 
@@ -2216,6 +2291,9 @@ void doKeypress(ALLEGRO_EVENT* event, bool isDown)
     case ALLEGRO_KEY_RCTRL:
         _ctrlPressed = isDown;
         break;
+    case ALLEGRO_KEY_ALT:
+        _altPressed = isDown;
+        break;
     }
 }
 
@@ -2265,6 +2343,18 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
                 _measureStartPos.x = MAXINT;
                 cleanupBitmap(_measureTag.tag.bmp);
                 _measureTag.tag.bmp = NULL;
+            }
+            else if (_altPressed) {
+                // Add/remove additional home icon
+                _ignoreNextRelease = true;
+                if (_altHomeLoc.lat == MAXINT) {
+                    Position pos;
+                    displayToChartPos(_mouse.x, _mouse.y, &pos);
+                    chartPosToLocation(pos.x, pos.y, &_altHomeLoc);
+                }
+                else {
+                    _altHomeLoc.lat = MAXINT;
+                }
             }
         }
         else {

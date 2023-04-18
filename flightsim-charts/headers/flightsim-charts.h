@@ -5,6 +5,8 @@
 // Constants
 const int MAX_AIRCRAFT = 800;
 const int MAX_CHARTS = 1000;
+const int MAX_FLIGHT_PLAN = 64;
+const int MAX_OBSTACLE = 5000;
 const int AIRCRAFT_RANGE = 20000;   // metres
 const int MAX_RANGE = 200000;       // metres
 const int WINGSPAN_SMALL = 60;      // feet
@@ -223,6 +225,26 @@ struct AI_Trail {
     int count;
 };
 
+struct FlightPlanData {
+    char name[32];
+    Locn loc;
+    DrawData tag;
+    Position pos;
+};
+
+struct ElevationData {
+    Locn loc;
+    DrawData tag;
+};
+
+struct ObstacleData {
+    char name[32];
+    char elevation[16];
+    Locn loc;
+    DrawData tag;
+    DrawData moreTag;
+};
+
 const int Max_AI_Aircraft = 5000;
 const int Max_AI_Fixed = 500;
 const int Max_AI_ModelMatch = 25000;
@@ -230,6 +252,6 @@ const int Max_AI_ModelMatch = 25000;
 // Prototypes
 int showMessage(const char* message, bool isError, const char* title = NULL, bool canCancel = false);
 void createTagText(char* callsign, char* model, char* tagText);
-void createTagBitmap(char *tagText, DrawData* tag, bool isMeasure = false);
+void createTagBitmap(char *tagText, DrawData* tag, bool isMeasure = false, bool isElevation = false);
 void cleanupBitmap(ALLEGRO_BITMAP* bmp);
 void cleanupTagBitmap(DrawData* tag);

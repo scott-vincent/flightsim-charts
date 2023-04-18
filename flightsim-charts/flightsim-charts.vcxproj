@@ -190,6 +190,7 @@
   <ItemGroup>
     <ClInclude Include="headers\ChartCoords.h" />
     <ClInclude Include="headers\ChartFile.h" />
+    <ClInclude Include="headers\ChartFlightPlan.h" />
     <ClInclude Include="headers\flightsim-charts.h" />
     <ClInclude Include="headers\Listener.h" />
     <ClInclude Include="headers\Server.h" />
@@ -205,6 +206,7 @@
     <ClCompile Include="src\Chart.cpp" />
     <ClCompile Include="src\ChartCoords.cpp" />
     <ClCompile Include="src\ChartFile.cpp" />
+    <ClCompile Include="src\ChartFlightPlan.cpp" />
     <ClCompile Include="src\flightsim-charts.cpp" />
     <ClCompile Include="src\Listener.cpp" />
     <ClCompile Include="src\Server.cpp" />

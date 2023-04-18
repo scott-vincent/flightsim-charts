@@ -24,3 +24,4 @@ void aircraftLocToChartPos(AircraftPosition* pos);
 bool drawOther(Position* displayPos1, Position* displayPos2, Locn* loc, Position* pos, bool force = false);
 CalibratedData* findClosestChart(CalibratedData* calib, int count, Locn* loc);
 void adjustFollowLocation(LocData* loc, double ownWingSpan);
+void findTrackExtremities(FlightPlanData start, FlightPlanData end, Position* line1Start, Position* line1End, Position* line2Start, Position* line2End);

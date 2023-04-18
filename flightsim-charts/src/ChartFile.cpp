@@ -14,6 +14,9 @@ extern int _displayHeight;
 extern ChartData _chartData;
 extern Settings _settings;
 
+// Prototypes
+void convertTextReadableLocation(char* text, Locn* loc);
+
 
 /// <summary>
 /// Returns the full pathname of the settings file
@@ -257,10 +260,11 @@ void loadCalibrationData(ChartData* chartData, char* filename = NULL)
 /// Windows Common File Picker Dialog.
 /// Returns false if cancelled.
 /// </summary>
-bool fileSelectorDialog(HWND displayHwnd)
+char *fileSelectorDialog(HWND displayHwnd, const char* filter)
 {
+    static char filename[260];
+
     bool validFolder = false;
-    char filename[260];
     char folder[260];
     OPENFILENAME ofn;
 
@@ -278,7 +282,7 @@ bool fileSelectorDialog(HWND displayHwnd)
     ofn.lpstrFile = filename;
     ofn.lpstrFile[0] = '\0';
     ofn.nMaxFile = sizeof(filename);
-    ofn.lpstrFilter = ".png or .jpg\0*.png;*.jpg\0";
+    ofn.lpstrFilter = filter;
     ofn.nFilterIndex = 1;
     ofn.lpstrFileTitle = NULL;
     ofn.nMaxFileTitle = 0;
@@ -286,11 +290,10 @@ bool fileSelectorDialog(HWND displayHwnd)
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
 
     if (!GetOpenFileName(&ofn)) {
-        return false;
+        *filename = '\0';
     }
 
-    strcpy(_settings.chart, filename);
-    return true;
+    return filename;
 }
 
 /// <summary>
@@ -314,29 +317,68 @@ void getClipboardLocation(Locn* loc)
         CloseClipboard();
     }
 
+    convertTextReadableLocation(text, loc);
+}
+
+/// <summary>
+/// Converts text readable location to a location object. Text can be from
+/// Little Navmap, Google Maps, OpenStreetMap or an exported flight plan file.
+/// Returns MAXINT if no valid location found.
+/// </summary>
+void convertTextReadableLocation(char* text, Locn* loc)
+{
     loc->lat = MAXINT;
     loc->lon = MAXINT;
 
     if (strchr(text, '°')) {
-        // Little Navmap format, e.g. 51° 28' 29.60" N 0° 29' 5.19" W
         int deg;
         int min;
         double sec;
         char dirn;
 
-        int count = sscanf(text, "%d° %d' %lf\" %c", &deg, &min, &sec, &dirn);
-        char* next = strchr(text, dirn);
-        if (count == 4 && next) {
-            loc->lat = deg + (min / 60.0) + (sec / 3600.0);
-            if (dirn == 'S') {
-                loc->lat = -loc->lat;
+        if (text[0] == 'N' || text[0] == 'S') {
+            // Flight Plan format, e.g. N50° 43' 58.45",W0° 48' 3.14"
+            int count = sscanf(text, "%c%d° %d' %lf\"", &dirn, &deg, &min, &sec);
+            if (count == 2) {
+                text = strchr(text, ' ');
+                count += sscanf(text, "%d' %lf\"", &min, &sec);
             }
-            next++;
-            count = sscanf(next, "%d° %d' %lf\" %c", &deg, &min, &sec, &dirn);
-            if (count == 4) {
-                loc->lon = deg + (min / 60.0) + (sec / 3600.0);
-                if (dirn == 'W') {
-                    loc->lon = -loc->lon;
+            char* next = strchr(text, ',');
+            if (count == 4 && next) {
+                loc->lat = deg + (min / 60.0) + (sec / 3600.0);
+                if (dirn == 'S') {
+                    loc->lat = -loc->lat;
+                }
+                next++;
+                count = sscanf(next, "%c%d° %d' %lf\"", &dirn, &deg, &min, &sec);
+                if (count == 2) {
+                    next = strchr(next, ' ');
+                    count += sscanf(next, "%d' %lf\"", &min, &sec);
+                }
+                if (count == 4) {
+                    loc->lon = deg + (min / 60.0) + (sec / 3600.0);
+                    if (dirn == 'W') {
+                        loc->lon = -loc->lon;
+                    }
+                }
+            }
+        }
+        else {
+            // Little Navmap format, e.g. 51° 28' 29.60" N 0° 29' 5.19" W
+            int count = sscanf(text, "%d° %d' %lf\" %c", &deg, &min, &sec, &dirn);
+            char* next = strchr(text, dirn);
+            if (count == 4 && next) {
+                loc->lat = deg + (min / 60.0) + (sec / 3600.0);
+                if (dirn == 'S') {
+                    loc->lat = -loc->lat;
+                }
+                next++;
+                count = sscanf(next, "%d° %d' %lf\" %c", &deg, &min, &sec, &dirn);
+                if (count == 4) {
+                    loc->lon = deg + (min / 60.0) + (sec / 3600.0);
+                    if (dirn == 'W') {
+                        loc->lon = -loc->lon;
+                    }
                 }
             }
         }

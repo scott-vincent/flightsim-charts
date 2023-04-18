@@ -480,3 +480,34 @@ void adjustFollowLocation(LocData* locData, double ownWingSpan)
     double nm = feet / 6076.12;
     greatCirclePos(&locData->loc, locData->heading, nm);
 }
+
+/// <summary>
+/// Given a flight plan leg (start and end) find the two lines that are
+/// 5nm either side of the original line.
+/// </summary>
+void findTrackExtremities(FlightPlanData start, FlightPlanData end, Position* line1Start,
+    Position* line1End, Position* line2Start, Position* line2End)
+{
+    // First we need to know the length of the leg and its angle
+    double xLen = end.pos.x - start.pos.x;
+    double yLen = end.pos.y - start.pos.y;
+    double displayLen = sqrt(pow(xLen, 2.0) + pow(yLen, 2.0));
+    double angle = atan2(yLen, xLen);
+
+    // Find the equivalent length that represents 5nm
+    double nmLen = greatCircleDistance(&start.loc, &end.loc);
+    double perpLen = displayLen * 5.0 / nmLen;
+
+    // Find the start points that are 5nm perpendicular from the leg start
+    double perpRad = 90.0 * DegreesToRadians;
+    line1Start->x = start.pos.x + perpLen * cos(angle - perpRad);
+    line1Start->y = start.pos.y + perpLen * sin(angle - perpRad);
+    line2Start->x = start.pos.x + perpLen * cos(angle + perpRad);
+    line2Start->y = start.pos.y + perpLen * sin(angle + perpRad);
+
+    // Find the end points that are 5nm perpendicular from the leg end
+    line1End->x = end.pos.x + perpLen * cos(angle - perpRad);
+    line1End->y = end.pos.y + perpLen * sin(angle - perpRad);
+    line2End->x = end.pos.x + perpLen * cos(angle + perpRad);
+    line2End->y = end.pos.y + perpLen * sin(angle + perpRad);
+}

@@ -39,6 +39,9 @@
     <ClInclude Include="headers\Server.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="headers\ChartFlightPlan.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="flightsim-charts.rc">
@@ -67,6 +70,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\Listener.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ChartFlightPlan.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

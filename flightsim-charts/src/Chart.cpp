@@ -8,6 +8,7 @@
 #include "flightsim-charts.h"
 #include "ChartFile.h"
 #include "ChartCoords.h"
+#include "ChartFlightPlan.h"
 
 // Constants
 const char ProgramName[] = "FlightSim Charts";
@@ -122,6 +123,14 @@ TagData _measureTag;
 bool _ignoreNextRelease;
 char _aiHome[256];
 char _previousChart[512];
+FlightPlanData _flightPlan[MAX_FLIGHT_PLAN];
+int _flightPlanCount = 0;
+ObstacleData* _obstacles;
+int _obstacleCount = 0;
+bool _showObstacleNames = false;
+ElevationData* _elevations;
+int _elevationCount = 0;
+
 
 enum MENU_ITEMS {
     MENU_LOAD_CHART,
@@ -157,6 +166,10 @@ enum MENU_ITEMS {
     MENU_SHOW_AI_MILITARY_ONLY,
     MENU_CLEAR_AI_TRAILS,
     MENU_SHOW_CALIBRATION,
+    MENU_SHOW_FLIGHT_PLAN,
+    MENU_SHOW_ELEVATIONS,
+    MENU_SHOW_OBSTACLES,
+    MENU_SHOW_OBSTACLE_NAMES,
     MENU_RECALIBRATE,
 };
 
@@ -457,6 +470,10 @@ HMENU createMenu()
         AppendMenu(showMenu, MF_STRING, MENU_CLEAR_AI_TRAILS, "Clear AI trails");
     }
     AppendMenu(showMenu, MF_STRING, MENU_SHOW_CALIBRATION, "Show calibration");
+    AppendMenu(showMenu, MF_STRING, MENU_SHOW_FLIGHT_PLAN, "Show flight plan");
+    AppendMenu(showMenu, MF_STRING, MENU_SHOW_ELEVATIONS, "Show UK elevations");
+    AppendMenu(showMenu, MF_STRING, MENU_SHOW_OBSTACLES, "Show obstacles");
+    AppendMenu(showMenu, MF_STRING, MENU_SHOW_OBSTACLE_NAMES, "Show obstacle names");
 
     char menuText[64];
     if (*_follow.callsign == '\0') {
@@ -553,10 +570,18 @@ void updateMenu(HMENU menu)
     }
 
     EnableMenuItem(menu, MENU_SHOW_CALIBRATION, enabledState(calibrated));
+    EnableMenuItem(menu, MENU_SHOW_FLIGHT_PLAN, enabledState(calibrated));
+    EnableMenuItem(menu, MENU_SHOW_ELEVATIONS, enabledState(calibrated));
+    EnableMenuItem(menu, MENU_SHOW_OBSTACLES, enabledState(calibrated));
+    EnableMenuItem(menu, MENU_SHOW_OBSTACLE_NAMES, enabledState(_obstacleCount > 0));
 
     CheckMenuItem(menu, MENU_MAX_RANGE, checkedState(_maxRange));
     CheckMenuItem(menu, MENU_SHOW_TAGS, checkedState(_showTags));
     CheckMenuItem(menu, MENU_SHOW_CALIBRATION, checkedState(_showCalibration));
+    CheckMenuItem(menu, MENU_SHOW_FLIGHT_PLAN, checkedState(_flightPlanCount > 0));
+    CheckMenuItem(menu, MENU_SHOW_ELEVATIONS, checkedState(_elevationCount > 0));
+    CheckMenuItem(menu, MENU_SHOW_OBSTACLES, checkedState(_obstacleCount > 0));
+    CheckMenuItem(menu, MENU_SHOW_OBSTACLE_NAMES, checkedState(_showObstacleNames));
 }
 
 bool windowCallback(ALLEGRO_DISPLAY* display, UINT message,
@@ -872,6 +897,41 @@ void actionMenuItem()
         clearCustomPoints();
         break;
     }
+    case MENU_SHOW_FLIGHT_PLAN:
+    {
+        if (_flightPlanCount == 0) {
+            newFlightPlan();
+        }
+        else {
+            clearFlightPlan();
+        }
+        break;
+    }
+    case MENU_SHOW_ELEVATIONS:
+    {
+        if (_elevationCount == 0) {
+            newElevations();
+        }
+        else {
+            clearElevations();
+        }
+        break;
+    }
+    case MENU_SHOW_OBSTACLES:
+    {
+        if (_obstacleCount == 0) {
+            newObstacles();
+        }
+        else {
+            clearObstacles();
+        }
+        break;
+    }
+    case MENU_SHOW_OBSTACLE_NAMES:
+    {
+        _showObstacleNames = !_showObstacleNames;
+        break;
+    }
     case MENU_RECALIBRATE:
     {
         _chartData.state = 0;
@@ -1060,7 +1120,7 @@ void cleanup()
     cleanupBitmap(_windInfoCopy.bmp);
     cleanupTagBitmap(&_measureTag.tag);
 
-    // Clenaup tags
+    // Cleanup tags
     for (int i = 0; i < _tagCount; i++) {
         cleanupTagBitmap(&_otherTag[i].tag);
     }
@@ -1074,6 +1134,14 @@ void cleanup()
         cleanupTagBitmap(&_aiFixed[i].tagData.tag);
         cleanupTagBitmap(&_aiFixed[i].tagData.moreTag);
     }
+
+    for (int i = 0; i < _flightPlanCount; i++) {
+        cleanupTagBitmap(&_flightPlan[i].tag);
+    }
+
+    clearFlightPlan();
+    clearElevations();
+    clearObstacles();
 
     if (_bmpMutex) {
         CloseHandle(_bmpMutex);
@@ -1805,6 +1873,87 @@ void drawAiObjects()
     }
 }
 
+void drawFlightPlan()
+{
+    ALLEGRO_COLOR trackColour = al_map_rgb(0xa2, 0x4e, 0xaf);
+    ALLEGRO_COLOR edgeColour = al_map_rgb(0xeb, 0x93, 0xf7);
+
+    Position chartPos;
+
+    locationToChartPos(&_flightPlan[0].loc, &chartPos);
+    chartToDisplayPos(chartPos.x, chartPos.y, &_flightPlan[0].pos);
+
+    for (int num = 1; num < _flightPlanCount; num++) {
+        // Draw line to next waypoint
+        locationToChartPos(&_flightPlan[num].loc, &chartPos);
+        chartToDisplayPos(chartPos.x, chartPos.y, &_flightPlan[num].pos);
+
+        Position fromPos;
+        fromPos.x = _flightPlan[num - 1].pos.x;
+        fromPos.y = _flightPlan[num - 1].pos.y;
+
+        Position toPos;
+        toPos.x = _flightPlan[num].pos.x;
+        toPos.y = _flightPlan[num].pos.y;
+
+        al_draw_line(fromPos.x, fromPos.y, toPos.x, toPos.y, trackColour, 3);
+
+        // Draw extremity lines (5nm either side) to next waypoint
+        Position line1Start, line1End, line2Start, line2End;
+        findTrackExtremities(_flightPlan[num - 1], _flightPlan[num], &line1Start, &line1End, &line2Start, &line2End);
+
+        al_draw_line(line1Start.x, line1Start.y, line1End.x, line1End.y, edgeColour, 2);
+        al_draw_line(line2Start.x, line2Start.y, line2End.x, line2End.y, edgeColour, 2);
+    }
+
+    // Add waypoint labels
+    for (int num = 0; num < _flightPlanCount; num++) {
+        al_draw_bitmap(_flightPlan[num].tag.bmp, _flightPlan[num].pos.x - 20, _flightPlan[num].pos.y - 5, 0);
+    }
+}
+
+void drawElevations()
+{
+    Position chartPos;
+    Position pos;
+
+    for (int num = 0; num < _elevationCount; num++) {
+        // Draw next elevation
+        locationToChartPos(&_elevations[num].loc, &chartPos);
+        chartToDisplayPos(chartPos.x, chartPos.y, &pos);
+
+        al_draw_bitmap(_elevations[num].tag.bmp, pos.x - 15, pos.y - 5, 0);
+    }
+}
+
+void drawObstacles()
+{
+    Position chartPos;
+    Position pos;
+
+    for (int num = 0; num < _obstacleCount; num++) {
+        // Draw next obstacle
+        locationToChartPos(&_obstacles[num].loc, &chartPos);
+        chartToDisplayPos(chartPos.x, chartPos.y, &pos);
+
+        if (_showObstacleNames) {
+            if (_obstacles[num].tag.bmp == NULL) {
+                if (num == 0) {
+                    al_set_window_title(_display, "Generating Obstacle Names ...");
+                    _titleState = -2;
+                }
+                createTagBitmap(_obstacles[num].name, &_obstacles[num].tag, true);
+            }
+
+            al_draw_bitmap(_obstacles[num].tag.bmp, pos.x - 30, pos.y - 10, 0);
+            al_draw_bitmap(_obstacles[num].moreTag.bmp, pos.x - 30, pos.y, 0);
+        }
+        else {
+            al_draw_bitmap(_obstacles[num].moreTag.bmp, pos.x - 30, pos.y - 5, 0);
+        }
+    }
+}
+
 void render()
 {
     if (*_settings.chart == '\0') {
@@ -1820,6 +1969,19 @@ void render()
     if (_showAi) {
         // Draw fixed objects (if injected), e.g. airports and waypoints
         drawAiObjects();
+    }
+
+    // Need at least 2 waypoints to draw a flight plan
+    if (_flightPlanCount > 1) {
+        drawFlightPlan();
+    }
+
+    if (_obstacleCount > 0) {
+        drawObstacles();
+    }
+
+    if (_elevationCount > 0) {
+        drawElevations();
     }
 
     // Draw aircraft
@@ -1980,10 +2142,13 @@ void newChart()
 
     al_set_window_title(_display, "Select Chart");
 
-    if (!fileSelectorDialog(al_get_win_window_handle(_display))) {
+    char* newChart = fileSelectorDialog(al_get_win_window_handle(_display), ".png or .jpg\0*.png;*.jpg\0");
+    if (*newChart == '\0') {
         _titleState = -2;
         return;
     }
+
+    strcpy(_settings.chart, newChart);
 
     if (initChart()) {
         // Save the last loaded chart name
@@ -2097,7 +2262,7 @@ void updateOwnAircraft()
 /// Create a tag bitmap to show to the right of other aircraft.
 /// It displays their callsign and aircraft model.
 /// </summary>
-void createTagBitmap(char *tagText, DrawData* tag, bool isMeasure)
+void createTagBitmap(char *tagText, DrawData* tag, bool isMeasure, bool isElevation)
 {
     tag->width = 4 + strlen(tagText) * 8;
     tag->height = 10;
@@ -2106,7 +2271,10 @@ void createTagBitmap(char *tagText, DrawData* tag, bool isMeasure)
 
     al_set_target_bitmap(tag->bmp);
 
-    if (isMeasure) {
+    if (isElevation) {
+        al_clear_to_color(al_map_rgb(0xdd, 0xbd, 0x89));
+    }
+    else if (isMeasure) {
         al_clear_to_color(al_map_rgb(0xe0, 0xe0, 0x50));
     }
     else {

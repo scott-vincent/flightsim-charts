@@ -2,7 +2,7 @@
 #include <iostream>
 #include <thread>
 
-const char* versionString = "v1.6.7";
+const char* versionString = "v2.0.0";
 bool _quit = false;
 bool _showAi = false;
 bool _noConnect = false;

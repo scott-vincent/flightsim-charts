@@ -166,10 +166,10 @@ enum MENU_ITEMS {
     MENU_SHOW_AI_MILITARY_ONLY,
     MENU_CLEAR_AI_TRAILS,
     MENU_SHOW_CALIBRATION,
-    MENU_SHOW_FLIGHT_PLAN,
-    MENU_SHOW_ELEVATIONS,
-    MENU_SHOW_OBSTACLES,
+    MENU_LOAD_FLIGHT_PLAN,
+    MENU_LOAD_OBSTACLES,
     MENU_SHOW_OBSTACLE_NAMES,
+    MENU_SHOW_ELEVATIONS,
     MENU_RECALIBRATE,
 };
 
@@ -470,10 +470,12 @@ HMENU createMenu()
         AppendMenu(showMenu, MF_STRING, MENU_CLEAR_AI_TRAILS, "Clear AI trails");
     }
     AppendMenu(showMenu, MF_STRING, MENU_SHOW_CALIBRATION, "Show calibration");
-    AppendMenu(showMenu, MF_STRING, MENU_SHOW_FLIGHT_PLAN, "Show flight plan");
-    AppendMenu(showMenu, MF_STRING, MENU_SHOW_ELEVATIONS, "Show UK elevations");
-    AppendMenu(showMenu, MF_STRING, MENU_SHOW_OBSTACLES, "Show obstacles");
-    AppendMenu(showMenu, MF_STRING, MENU_SHOW_OBSTACLE_NAMES, "Show obstacle names");
+
+    HMENU flightPlanningMenu = CreatePopupMenu();
+    AppendMenu(flightPlanningMenu, MF_STRING, MENU_LOAD_FLIGHT_PLAN, "Load flight plan");
+    AppendMenu(flightPlanningMenu, MF_STRING, MENU_LOAD_OBSTACLES, "Load obstacles");
+    AppendMenu(flightPlanningMenu, MF_STRING, MENU_SHOW_OBSTACLE_NAMES, "Show obstacle names");
+    AppendMenu(flightPlanningMenu, MF_STRING, MENU_SHOW_ELEVATIONS, "Show UK elevations");
 
     char menuText[64];
     if (*_follow.callsign == '\0') {
@@ -496,6 +498,7 @@ HMENU createMenu()
     AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)rotateMenu, "Rotate aircraft");
     AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)teleportMenu, "Teleport aircraft");
     AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)showMenu, "Show / Clear");
+    AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)flightPlanningMenu, "Flight Planning");
 
     AppendMenu(menu, MF_SEPARATOR, 0, NULL);
     AppendMenu(menu, MF_STRING, MENU_RECALIBRATE, "Re-calibrate chart");
@@ -570,18 +573,20 @@ void updateMenu(HMENU menu)
     }
 
     EnableMenuItem(menu, MENU_SHOW_CALIBRATION, enabledState(calibrated));
-    EnableMenuItem(menu, MENU_SHOW_FLIGHT_PLAN, enabledState(calibrated));
-    EnableMenuItem(menu, MENU_SHOW_ELEVATIONS, enabledState(calibrated));
-    EnableMenuItem(menu, MENU_SHOW_OBSTACLES, enabledState(calibrated));
-    EnableMenuItem(menu, MENU_SHOW_OBSTACLE_NAMES, enabledState(_obstacleCount > 0));
 
     CheckMenuItem(menu, MENU_MAX_RANGE, checkedState(_maxRange));
     CheckMenuItem(menu, MENU_SHOW_TAGS, checkedState(_showTags));
     CheckMenuItem(menu, MENU_SHOW_CALIBRATION, checkedState(_showCalibration));
-    CheckMenuItem(menu, MENU_SHOW_FLIGHT_PLAN, checkedState(_flightPlanCount > 0));
-    CheckMenuItem(menu, MENU_SHOW_ELEVATIONS, checkedState(_elevationCount > 0));
-    CheckMenuItem(menu, MENU_SHOW_OBSTACLES, checkedState(_obstacleCount > 0));
+
+    EnableMenuItem(menu, MENU_LOAD_FLIGHT_PLAN, enabledState(calibrated));
+    EnableMenuItem(menu, MENU_LOAD_OBSTACLES, enabledState(calibrated));
+    EnableMenuItem(menu, MENU_SHOW_OBSTACLE_NAMES, enabledState(_obstacleCount > 0));
+    EnableMenuItem(menu, MENU_SHOW_ELEVATIONS, enabledState(calibrated));
+
+    CheckMenuItem(menu, MENU_LOAD_FLIGHT_PLAN, checkedState(_flightPlanCount > 0));
+    CheckMenuItem(menu, MENU_LOAD_OBSTACLES, checkedState(_obstacleCount > 0));
     CheckMenuItem(menu, MENU_SHOW_OBSTACLE_NAMES, checkedState(_showObstacleNames));
+    CheckMenuItem(menu, MENU_SHOW_ELEVATIONS, checkedState(_elevationCount > 0));
 }
 
 bool windowCallback(ALLEGRO_DISPLAY* display, UINT message,
@@ -897,7 +902,7 @@ void actionMenuItem()
         clearCustomPoints();
         break;
     }
-    case MENU_SHOW_FLIGHT_PLAN:
+    case MENU_LOAD_FLIGHT_PLAN:
     {
         if (_flightPlanCount == 0) {
             newFlightPlan();
@@ -907,17 +912,7 @@ void actionMenuItem()
         }
         break;
     }
-    case MENU_SHOW_ELEVATIONS:
-    {
-        if (_elevationCount == 0) {
-            newElevations();
-        }
-        else {
-            clearElevations();
-        }
-        break;
-    }
-    case MENU_SHOW_OBSTACLES:
+    case MENU_LOAD_OBSTACLES:
     {
         if (_obstacleCount == 0) {
             newObstacles();
@@ -930,6 +925,16 @@ void actionMenuItem()
     case MENU_SHOW_OBSTACLE_NAMES:
     {
         _showObstacleNames = !_showObstacleNames;
+        break;
+    }
+    case MENU_SHOW_ELEVATIONS:
+    {
+        if (_elevationCount == 0) {
+            newElevations();
+        }
+        else {
+            clearElevations();
+        }
         break;
     }
     case MENU_RECALIBRATE:
@@ -1875,8 +1880,8 @@ void drawAiObjects()
 
 void drawFlightPlan()
 {
-    ALLEGRO_COLOR trackColour = al_map_rgb(0xa2, 0x4e, 0xaf);
-    ALLEGRO_COLOR edgeColour = al_map_rgb(0xeb, 0x93, 0xf7);
+    ALLEGRO_COLOR trackColour = al_map_rgb(0x40, 0x40, 0xf0);
+    ALLEGRO_COLOR edgeColour = al_map_rgb(0x89, 0xe8, 0xe8);
 
     Position chartPos;
 
@@ -1896,7 +1901,7 @@ void drawFlightPlan()
         toPos.x = _flightPlan[num].pos.x;
         toPos.y = _flightPlan[num].pos.y;
 
-        al_draw_line(fromPos.x, fromPos.y, toPos.x, toPos.y, trackColour, 3);
+        al_draw_line(fromPos.x, fromPos.y, toPos.x, toPos.y, trackColour, 5);
 
         // Draw extremity lines (5nm either side) to next waypoint
         Position line1Start, line1End, line2Start, line2End;
@@ -2272,7 +2277,7 @@ void createTagBitmap(char *tagText, DrawData* tag, bool isMeasure, bool isElevat
     al_set_target_bitmap(tag->bmp);
 
     if (isElevation) {
-        al_clear_to_color(al_map_rgb(0xdd, 0xbd, 0x89));
+        al_clear_to_color(al_map_rgb(0x40, 0xf0, 0x40));
     }
     else if (isMeasure) {
         al_clear_to_color(al_map_rgb(0xe0, 0xe0, 0x50));

@@ -16,7 +16,7 @@ Charts for most airports can be downloaded from the internet and are most often 
 
 You can download the latest release as a zip file from here:
 
-Link: [Latest release of FlightSim-Charts](https://github.com/scott-vincent/flightsim-charts/releases/latest/download/flightsim-charts-v1.6.7-Windows-x64.zip)
+Link: [Latest release of FlightSim-Charts](https://github.com/scott-vincent/flightsim-charts/releases/latest/download/flightsim-charts-v2.0.0-Windows-x64.zip)
 
 Open the zip file and drag the flightsim-charts folder onto your desktop (or anywhere you want on your PC). Open the folder on your desktop and run flightsim-charts.exe. The first time you run it you will get a warning saying "Windows protected your PC". To continue, you need to click "More info" and then "Run anyway". Windows always gives this warning for downloaded files. I can assure you the file is safe as I've built it myself but you can always right-click it and virus scan it if you like.
 

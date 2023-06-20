@@ -14,7 +14,7 @@ const char DefaultChart[] = "Airport Charts\\EG\\LL\\EGLL Heathrow.png";
 const int DefaultFPS = 8;
 const char DegreesSymbol[] = "\xC2\xB0";
 
-const char Airliner[] = "_A20_A21_A30_A31_A32_A33_BCS_B38_B73_B75_B76_E19_E29_E75_";
+const char Airliner[] = "_A20_A21_A30_A31_A32_A33_BCS_B38_B73_B75_B76_C17_E19_E29_E75_";
 const char Large_Airliner[] = "_A34_A35_A38_A3S_B74_B77_B78_";
 
 const char Heli[] = "_A10_A13_A16_A18_AS5_B06_B50_B17_CLO_EC3_EC4_EC5_EC7_EXP_MM1_R22_R44_R66_S76_WAS_";
@@ -233,6 +233,12 @@ struct FlightPlanData {
 };
 
 struct ElevationData {
+    Locn loc;
+    DrawData tag;
+};
+
+struct VrpData {
+    char name[32];
     Locn loc;
     DrawData tag;
 };

@@ -125,6 +125,8 @@ char _aiHome[256];
 char _previousChart[512];
 FlightPlanData _flightPlan[MAX_FLIGHT_PLAN];
 int _flightPlanCount = 0;
+VrpData* _vrps;
+int _vrpCount = 0;
 ObstacleData* _obstacles;
 int _obstacleCount = 0;
 bool _showObstacleNames = false;
@@ -167,6 +169,7 @@ enum MENU_ITEMS {
     MENU_CLEAR_AI_TRAILS,
     MENU_SHOW_CALIBRATION,
     MENU_LOAD_FLIGHT_PLAN,
+    MENU_LOAD_VRPS,
     MENU_LOAD_OBSTACLES,
     MENU_SHOW_OBSTACLE_NAMES,
     MENU_SHOW_ELEVATIONS,
@@ -473,6 +476,7 @@ HMENU createMenu()
 
     HMENU flightPlanningMenu = CreatePopupMenu();
     AppendMenu(flightPlanningMenu, MF_STRING, MENU_LOAD_FLIGHT_PLAN, "Load flight plan");
+    AppendMenu(flightPlanningMenu, MF_STRING, MENU_LOAD_VRPS, "Load VRPs");
     AppendMenu(flightPlanningMenu, MF_STRING, MENU_LOAD_OBSTACLES, "Load obstacles");
     AppendMenu(flightPlanningMenu, MF_STRING, MENU_SHOW_OBSTACLE_NAMES, "Show obstacle names");
     AppendMenu(flightPlanningMenu, MF_STRING, MENU_SHOW_ELEVATIONS, "Show UK elevations");
@@ -579,11 +583,13 @@ void updateMenu(HMENU menu)
     CheckMenuItem(menu, MENU_SHOW_CALIBRATION, checkedState(_showCalibration));
 
     EnableMenuItem(menu, MENU_LOAD_FLIGHT_PLAN, enabledState(calibrated));
+    EnableMenuItem(menu, MENU_LOAD_VRPS, enabledState(calibrated));
     EnableMenuItem(menu, MENU_LOAD_OBSTACLES, enabledState(calibrated));
     EnableMenuItem(menu, MENU_SHOW_OBSTACLE_NAMES, enabledState(_obstacleCount > 0));
     EnableMenuItem(menu, MENU_SHOW_ELEVATIONS, enabledState(calibrated));
 
     CheckMenuItem(menu, MENU_LOAD_FLIGHT_PLAN, checkedState(_flightPlanCount > 0));
+    CheckMenuItem(menu, MENU_LOAD_VRPS, checkedState(_vrpCount > 0));
     CheckMenuItem(menu, MENU_LOAD_OBSTACLES, checkedState(_obstacleCount > 0));
     CheckMenuItem(menu, MENU_SHOW_OBSTACLE_NAMES, checkedState(_showObstacleNames));
     CheckMenuItem(menu, MENU_SHOW_ELEVATIONS, checkedState(_elevationCount > 0));
@@ -909,6 +915,16 @@ void actionMenuItem()
         }
         else {
             clearFlightPlan();
+        }
+        break;
+    }
+    case MENU_LOAD_VRPS:
+    {
+        if (_vrpCount == 0) {
+            newVrps();
+        }
+        else {
+            clearVrps();
         }
         break;
     }
@@ -1880,8 +1896,8 @@ void drawAiObjects()
 
 void drawFlightPlan()
 {
-    ALLEGRO_COLOR trackColour = al_map_rgb(0x40, 0x40, 0xf0);
-    ALLEGRO_COLOR edgeColour = al_map_rgb(0x89, 0xe8, 0xe8);
+    ALLEGRO_COLOR trackColour = al_map_rgb(0xe0, 0x30, 0xe0);
+    ALLEGRO_COLOR edgeColour = al_map_rgb(0x79, 0xd8, 0xd8);
 
     Position chartPos;
 
@@ -1928,6 +1944,20 @@ void drawElevations()
         chartToDisplayPos(chartPos.x, chartPos.y, &pos);
 
         al_draw_bitmap(_elevations[num].tag.bmp, pos.x - 15, pos.y - 5, 0);
+    }
+}
+
+void drawVrps()
+{
+    Position chartPos;
+    Position pos;
+
+    for (int num = 0; num < _vrpCount; num++) {
+        // Draw next VRP
+        locationToChartPos(&_vrps[num].loc, &chartPos);
+        chartToDisplayPos(chartPos.x, chartPos.y, &pos);
+
+        al_draw_bitmap(_vrps[num].tag.bmp, pos.x - 30, pos.y - 5, 0);
     }
 }
 
@@ -1979,6 +2009,10 @@ void render()
     // Need at least 2 waypoints to draw a flight plan
     if (_flightPlanCount > 1) {
         drawFlightPlan();
+    }
+
+    if (_vrpCount > 0) {
+        drawVrps();
     }
 
     if (_obstacleCount > 0) {
@@ -2277,7 +2311,12 @@ void createTagBitmap(char *tagText, DrawData* tag, bool isMeasure, bool isElevat
     al_set_target_bitmap(tag->bmp);
 
     if (isElevation) {
-        al_clear_to_color(al_map_rgb(0x40, 0xf0, 0x40));
+        if (isMeasure) {
+            al_clear_to_color(al_map_rgb(0x40, 0xf0, 0xa0));
+        }
+        else {
+            al_clear_to_color(al_map_rgb(0x40, 0xf0, 0x40));
+        }
     }
     else if (isMeasure) {
         al_clear_to_color(al_map_rgb(0xe0, 0xe0, 0x50));

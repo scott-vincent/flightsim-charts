@@ -12,6 +12,8 @@ extern int _titleState;
 extern int _titleDelay;
 extern FlightPlanData _flightPlan[MAX_FLIGHT_PLAN];
 extern int _flightPlanCount;
+extern VrpData* _vrps;
+extern int _vrpCount;
 extern ObstacleData* _obstacles;
 extern int _obstacleCount;
 extern bool _showObstacleNames;
@@ -38,6 +40,8 @@ void clearFlightPlan();
 void clearElevations();
 void loadObstacles(const char* filename);
 void clearObstacles();
+void loadVrps(const char* filename);
+void clearVrps();
 
 
 /// <summary>
@@ -216,7 +220,7 @@ void clearElevations()
 }
 
 /// <summary>
-/// Select am obstacle file
+/// Select an obstacle file
 /// </summary>
 void newObstacles()
 {
@@ -324,8 +328,8 @@ void loadObstacles(const char* filename)
 {
     clearObstacles();
 
-    // Allocate memory for 100 obstacles at a time
-    int mallocedObstacles = 100;
+    // Allocate memory for 250 obstacles at a time
+    int mallocedObstacles = 250;
     _obstacles = (ObstacleData*)malloc(mallocedObstacles * sizeof(ObstacleData));
     if (_obstacles == NULL) {
         printf("Ran out of memory\n");
@@ -364,7 +368,7 @@ void loadObstacles(const char* filename)
     }
 
     while (fgets(line, 2048, inf)) {
-        //Make sure we have an even number of quotes as entries can contain embedded CRLFs
+        // Make sure we have an even number of quotes as entries can contain embedded CRLFs
         while (!hasMatchedQuotes(line)) {
             char moreLine[2048];
             if (!fgets(moreLine, 2048, inf)) {
@@ -434,7 +438,7 @@ void loadObstacles(const char* filename)
         _obstacleCount++;
 
         if (_obstacleCount == mallocedObstacles) {
-            mallocedObstacles += 100;
+            mallocedObstacles += 250;
             ObstacleData* savedObstacles = _obstacles;
             _obstacles = (ObstacleData*)realloc(_obstacles, mallocedObstacles * sizeof(ObstacleData));
             if (_obstacles == NULL) {
@@ -475,4 +479,152 @@ void clearObstacles()
     free(_obstacles);
     _obstacleCount = 0;
     _showObstacleNames = false;
+}
+
+/// <summary>
+/// Select a VRP file
+/// </summary>
+void newVrps()
+{
+    al_set_window_title(_display, "Select VRP File");
+    _titleState = -2;
+
+    char* vrpFile = fileSelectorDialog(al_get_win_window_handle(_display), ".csv\0*.csv\0");
+    if (*vrpFile == '\0') {
+        return;
+    }
+
+    al_set_window_title(_display, "Loading VRP File ...");
+    loadVrps(vrpFile);
+}
+
+/// <summary>
+/// Load VRP file
+/// </summary>
+void loadVrps(const char* filename)
+{
+    clearVrps();
+
+    // Allocate memory for 250 VRPs at a time
+    int mallocedVrps = 250;
+    _vrps = (VrpData*)malloc(mallocedVrps * sizeof(VrpData));
+    if (_vrps == NULL) {
+        printf("Ran out of memory\n");
+        exit(1);
+    }
+
+    FILE* inf = fopen(filename, "r");
+    if (inf == NULL) {
+        return;
+    }
+
+    char line[2048];
+    char columns[9][256];
+
+    if (!fgets(line, 2048, inf)) {
+        al_set_window_title(_display, "Error: VRP file is empty");
+        _titleState = -9;
+        _titleDelay = 100;
+        return;
+    }
+
+    bool isNats = true;
+    if (strstr(line, "Type,Name,Ident,Latitude,Longitude,Elevation") != NULL) {
+        // Little NavMap format
+        isNats = false;
+    }
+
+    if (isNats) {
+        // NATS format
+        if (strstr(line, "VRP name,") == NULL) {
+            al_set_window_title(_display, "Error: VRP file has bad/missing header");
+            _titleState = -9;
+            _titleDelay = 100;
+            return;
+        }
+    }
+
+    while (fgets(line, 2048, inf)) {
+        // Make sure we have an even number of quotes as entries can contain embedded CRLFs
+        while (!hasMatchedQuotes(line)) {
+            char moreLine[2048];
+            if (!fgets(moreLine, 2048, inf)) {
+                al_set_window_title(_display, "Error: Incomplete file - No matching quote");
+                _titleState = -9;
+                _titleDelay = 100;
+                return;
+            }
+
+            char* joinPos = strchr(line, '\n');
+            if (!joinPos) {
+                joinPos = line + strlen(line);
+            }
+
+            *(joinPos++) = ',';
+            strcpy(joinPos, moreLine);
+        }
+
+        getColumns(line, columns);
+
+        char name[256];
+        double lat, lon;
+
+        if (isNats) {
+            strcpy(name, columns[0]);
+            lat = convertLatLon(columns[1]);
+            lon = convertLatLon(columns[2]);
+        }
+        else {
+            strcpy(name, columns[2]);
+            lat = strtod(columns[3], NULL);
+            lon = strtod(columns[4], NULL);
+        }
+
+        char* endName = strchr(name, ',');
+        if (endName) {
+            *endName = '\0';
+        }
+
+        strncpy(_vrps[_vrpCount].name, name, 32);
+        _vrps[_vrpCount].name[31] = '\0';
+
+        _vrps[_vrpCount].loc.lat = lat;
+        _vrps[_vrpCount].loc.lon = lon;
+
+        _vrpCount++;
+
+        if (_vrpCount == mallocedVrps) {
+            mallocedVrps += 250;
+            VrpData* savedVrps = _vrps;
+            _vrps = (VrpData*)realloc(_vrps, mallocedVrps * sizeof(VrpData));
+            if (_vrps == NULL) {
+                printf("Ran out of memory\n");
+                free(savedVrps);
+                exit(1);
+            }
+        }
+    }
+
+    fclose(inf);
+
+    for (int i = 0; i < _vrpCount; i++) {
+        createTagBitmap(_vrps[i].name, &_vrps[i].tag, true, true);
+    }
+}
+
+/// <summary>
+/// Clear VRPs
+/// </summary>
+void clearVrps()
+{
+    if (_vrpCount == 0) {
+        return;
+    }
+
+    for (int i = 0; i < _vrpCount; i++) {
+        cleanupTagBitmap(&_vrps[i].tag);
+    }
+
+    free(_vrps);
+    _vrpCount = 0;
 }

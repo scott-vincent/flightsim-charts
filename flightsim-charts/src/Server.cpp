@@ -129,6 +129,20 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
                 }
                 _snapshot.restore = false;
             }
+            else if (_snapshot.pause) {
+                _snapshot.paused = !_snapshot.paused;
+                EVENT_ID pauseEvent;
+                if (_snapshot.paused) {
+                    pauseEvent = KEY_PAUSE_ON;
+                }
+                else {
+                    pauseEvent = KEY_PAUSE_OFF;
+                }
+                if (SimConnect_TransmitClientEvent(hSimConnect, 0, pauseEvent, 0, SIMCONNECT_GROUP_PRIORITY_HIGHEST, SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY) != 0) {
+                    printf("Failed to send pause event\n");
+                }
+                _snapshot.pause = false;
+            }
             else if (_follow.inProgress && *_follow.callsign == '\0') {
                 stopFollowing(true);
             }
@@ -342,6 +356,9 @@ void init()
     addDataDef(DEF_ALL, "Atc Id", "string");
     addDataDef(DEF_ALL, "Atc Model", "string");
 
+    SimConnect_MapClientEventToSimEvent(hSimConnect, KEY_PAUSE_ON, "PAUSE_ON");
+    SimConnect_MapClientEventToSimEvent(hSimConnect, KEY_PAUSE_OFF, "PAUSE_OFF");
+
     // Constant teleport values
     _teleport.bank = 0;
     _teleport.pitch = 0;
@@ -394,6 +411,8 @@ void server()
     _snapshot.loc.lat = MAXINT;
     _snapshot.save = false;
     _snapshot.restore = false;
+    _snapshot.pause = false;
+    _snapshot.paused = false;
     *_follow.callsign = '\0';
     _follow.inProgress = false;
     _range = _maxRange ? MAX_RANGE : AIRCRAFT_RANGE;

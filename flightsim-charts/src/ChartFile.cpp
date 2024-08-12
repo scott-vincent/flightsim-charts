@@ -74,6 +74,7 @@ void saveSettings()
     fprintf(outf, "%d,%d,%d,%d\n", _settings.x, _settings.y, _settings.width, _settings.height);
     fprintf(outf, "%s\n", _settings.chart);
     fprintf(outf, "FramesPerSec = %d\n", _settings.framesPerSec);
+    fprintf(outf, "%s\n", _settings.location);
 
     fclose(outf);
 }
@@ -91,6 +92,8 @@ void loadSettings()
         int y;
         int width;
         int height;
+
+        *_settings.location = '\0';
 
         while (fgets(line, 256, inf) && nextLine < 4) {
             while (strlen(line) > 0 && (line[strlen(line) - 1] == ' '
@@ -127,6 +130,11 @@ void loadSettings()
                 }
                 break;
             }
+            case 4:
+            {
+                strcpy(_settings.location, line);
+                break;
+            }
             }
 
             nextLine++;
@@ -150,6 +158,10 @@ void loadSettings()
             *last = '\0';
             strcat(_settings.chart, DefaultChart);
         }
+    }
+
+    if (*_settings.location == '\0') {
+        strcpy(_settings.location, _settings.chart);
     }
 }
 
@@ -260,7 +272,7 @@ void loadCalibrationData(ChartData* chartData, char* filename = NULL)
 /// Windows Common File Picker Dialog.
 /// Returns false if cancelled.
 /// </summary>
-char *fileSelectorDialog(HWND displayHwnd, const char* filter)
+char *fileSelectorDialog(HWND displayHwnd, const char* filter, bool save = false)
 {
     static char filename[260];
 
@@ -287,10 +299,19 @@ char *fileSelectorDialog(HWND displayHwnd, const char* filter)
     ofn.lpstrFileTitle = NULL;
     ofn.nMaxFileTitle = 0;
     ofn.lpstrInitialDir = folder;
-    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+    ofn.Flags = OFN_PATHMUSTEXIST;
 
-    if (!GetOpenFileName(&ofn)) {
-        *filename = '\0';
+    if (save) {
+        if (!GetSaveFileName(&ofn)) {
+            *filename = '\0';
+        }
+    }
+    else {
+        ofn.Flags = ofn.Flags & OFN_FILEMUSTEXIST;
+
+        if (!GetOpenFileName(&ofn)) {
+            *filename = '\0';
+        }
     }
 
     return filename;
@@ -496,4 +517,63 @@ void findCalibratedCharts(CalibratedData* calib, int* count)
 
     // Recurse parent folder to find all calibration files
     findAllFiles(folder, calib, count);
+}
+
+bool saveSnapshot(char* locFile, double lat, double lon, double hdg, double bank, double pitch, double alt, double speed)
+{
+    if (strlen(locFile) < 4 || strcmp(&locFile[strlen(locFile) - 4], ".loc") != 0) {
+        strcat(locFile, ".loc");
+    }
+
+    FILE* outf = fopen(locFile, "w");
+    if (!outf) {
+        char msg[256];
+        sprintf(msg, "Failed to write file %s", locFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    fprintf(outf, "%f,%f,%f,%f,%f,%f,%f\n", lat, lon, hdg, bank, pitch, alt, speed);
+    fclose(outf);
+
+    strcpy(_settings.location, locFile);
+    saveSettings();
+
+    return true;
+}
+
+bool loadSnapshot(char* locFile, double *lat, double *lon, double *hdg, double *bank, double *pitch, double *alt, double *speed)
+{
+    FILE* inf = fopen(locFile, "r");
+    if (!inf) {
+        char msg[256];
+        sprintf(msg, "Failed to read file %s", locFile);
+        showMessage(msg, true);
+        return false;
+    }
+
+    float fLat, fLon, fHdg, fBank, fPitch, fAlt, fSpeed;
+    int count = fscanf(inf, "%f,%f,%f,%f,%f,%f,%f\n", &fLat, &fLon, &fHdg, &fBank, &fPitch, &fAlt, &fSpeed);
+    if (count != 7) {
+        char msg[256];
+        sprintf(msg, "Failed to read file %s", locFile);
+        showMessage(msg, true);
+        fclose(inf);
+        return false;
+    }
+
+    fclose(inf);
+
+    *lat = fLat;
+    *lon = fLon;
+    *hdg = fHdg;
+    *bank = fBank;
+    *pitch = fPitch;
+    *alt = fAlt;
+    *speed = fSpeed;
+
+    strcpy(_settings.location, locFile);
+    saveSettings();
+
+    return true;
 }

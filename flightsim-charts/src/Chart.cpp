@@ -104,6 +104,8 @@ bool _showAiInfoTags = true;
 bool _showAiPhotos = true;
 bool _showAiMilitaryOnly = false;
 bool _showCalibration = false;
+bool _alwaysOnTop = false;
+bool _showMiniMenu = false;
 Locn _clickedLoc;
 Position _clickedPos;
 Position _clipboardPos;
@@ -157,9 +159,13 @@ enum MENU_ITEMS {
     MENU_TELEPORT_CLIPBOARD,
     MENU_TELEPORT_SET_AI_HOME_HERE,
     MENU_TELEPORT_SET_AI_HOME_CLIPBOARD,
-    MENU_TELEPORT_RESTORE_LOCATION,
-    MENU_TELEPORT_SAVE_LOCATION,
     MENU_TELEPORT_FOLLOW,
+    MENU_SAVELOAD_SAVE_LOCATION,
+    MENU_SAVELOAD_RESTORE_LOCATION,
+    MENU_SAVELOAD_TO_FILE,
+    MENU_SAVELOAD_RESTORE_FROM_FILE,
+    MENU_SAVELOAD_PAUSE,
+    MENU_SAVELOAD_RESET,
     MENU_MAX_RANGE,
     MENU_SHOW_TAGS,
     MENU_SHOW_FIXED_TAGS,
@@ -168,12 +174,14 @@ enum MENU_ITEMS {
     MENU_SHOW_AI_MILITARY_ONLY,
     MENU_CLEAR_AI_TRAILS,
     MENU_SHOW_CALIBRATION,
+    MENU_SHOW_MINI_MENU,
+    MENU_SHOW_ALWAYS_ON_TOP,
     MENU_LOAD_FLIGHT_PLAN,
     MENU_LOAD_VRPS,
     MENU_LOAD_OBSTACLES,
     MENU_SHOW_OBSTACLE_NAMES,
     MENU_SHOW_ELEVATIONS,
-    MENU_RECALIBRATE,
+    MENU_RECALIBRATE
 };
 
 // Prototypes
@@ -459,8 +467,14 @@ HMENU createMenu()
         AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_SET_AI_HOME_HERE, "Set AI Home to here");
         AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_SET_AI_HOME_CLIPBOARD, "Set AI Home to clipboard");
     }
-    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_RESTORE_LOCATION, "Restore location");
-    AppendMenu(teleportMenu, MF_STRING, MENU_TELEPORT_SAVE_LOCATION, "Save location");
+
+    HMENU saveloadMenu = CreatePopupMenu();
+    AppendMenu(saveloadMenu, MF_STRING, MENU_SAVELOAD_SAVE_LOCATION, "Save location");
+    AppendMenu(saveloadMenu, MF_STRING, MENU_SAVELOAD_RESTORE_LOCATION, "Restore location");
+    AppendMenu(saveloadMenu, MF_STRING, MENU_SAVELOAD_TO_FILE, "Saved location to file");
+    AppendMenu(saveloadMenu, MF_STRING, MENU_SAVELOAD_RESTORE_FROM_FILE, "Restore from file");
+    AppendMenu(saveloadMenu, MF_STRING, MENU_SAVELOAD_PAUSE, "Pause");
+    AppendMenu(saveloadMenu, MF_STRING, MENU_SAVELOAD_RESET, "Reset (restore and pause)");
 
     HMENU showMenu = CreatePopupMenu();
     AppendMenu(showMenu, MF_STRING, MENU_MAX_RANGE, "Maximum Range");
@@ -473,6 +487,8 @@ HMENU createMenu()
         AppendMenu(showMenu, MF_STRING, MENU_CLEAR_AI_TRAILS, "Clear AI trails");
     }
     AppendMenu(showMenu, MF_STRING, MENU_SHOW_CALIBRATION, "Show calibration");
+    AppendMenu(showMenu, MF_STRING, MENU_SHOW_MINI_MENU, "Show mini menu");
+    AppendMenu(showMenu, MF_STRING, MENU_SHOW_ALWAYS_ON_TOP, "Always on top");
 
     HMENU flightPlanningMenu = CreatePopupMenu();
     AppendMenu(flightPlanningMenu, MF_STRING, MENU_LOAD_FLIGHT_PLAN, "Load flight plan");
@@ -501,11 +517,33 @@ HMENU createMenu()
     AppendMenu(menu, MF_STRING, MENU_ROTATE_AGAIN, "Rotate again");
     AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)rotateMenu, "Rotate aircraft");
     AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)teleportMenu, "Teleport aircraft");
+    AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)saveloadMenu, "Save / Load");
     AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)showMenu, "Show / Clear");
     AppendMenu(menu, MF_STRING | MF_POPUP, (UINT_PTR)flightPlanningMenu, "Flight Planning");
 
     AppendMenu(menu, MF_SEPARATOR, 0, NULL);
     AppendMenu(menu, MF_STRING, MENU_RECALIBRATE, "Re-calibrate chart");
+
+    return menu;
+}
+
+HMENU createMiniMenu()
+{
+    HMENU menu = CreatePopupMenu();
+
+    AppendMenu(menu, MF_STRING, MENU_SAVELOAD_RESET, "Reset");
+    AppendMenu(menu, MF_STRING, MENU_SAVELOAD_PAUSE, "Pause");
+    AppendMenu(menu, MF_STRING, MENU_FIX_CRASH, "Fix crash");
+    AppendMenu(menu, MF_STRING, MENU_SHOW_ALWAYS_ON_TOP, "Always on top");
+
+    AppendMenu(menu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(menu, MF_STRING, MENU_SAVELOAD_SAVE_LOCATION, "Save location");
+    AppendMenu(menu, MF_STRING, MENU_SAVELOAD_RESTORE_LOCATION, "Restore location");
+    AppendMenu(menu, MF_STRING, MENU_SAVELOAD_TO_FILE, "Saved location to file");
+    AppendMenu(menu, MF_STRING, MENU_SAVELOAD_RESTORE_FROM_FILE, "Restore from file");
+
+    AppendMenu(menu, MF_SEPARATOR, 0, NULL);
+    AppendMenu(menu, MF_STRING, MENU_SHOW_MINI_MENU, "Show main menu");
 
     return menu;
 }
@@ -556,9 +594,13 @@ void updateMenu(HMENU menu)
     EnableMenuItem(menu, MENU_TELEPORT_ALT_INC_1, enabledState(active && calibrated && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_TELEPORT_ALT_INC_2, enabledState(active && calibrated && !_teleport.inProgress));
     EnableMenuItem(menu, MENU_TELEPORT_CLIPBOARD, enabledState(active && !_teleport.inProgress));
-    EnableMenuItem(menu, MENU_TELEPORT_RESTORE_LOCATION, enabledState(active && !_snapshot.save && _snapshot.loc.lat != MAXINT));
-    EnableMenuItem(menu, MENU_TELEPORT_SAVE_LOCATION, enabledState(active && !_snapshot.save));
     EnableMenuItem(menu, MENU_TELEPORT_FOLLOW, enabledState(active && !_follow.inProgress && *_closestAircraft != '\0'));
+    EnableMenuItem(menu, MENU_SAVELOAD_SAVE_LOCATION, enabledState(active && !_snapshot.save));
+    EnableMenuItem(menu, MENU_SAVELOAD_RESTORE_LOCATION, enabledState(active && !_snapshot.save && _snapshot.loc.lat != MAXINT));
+    EnableMenuItem(menu, MENU_SAVELOAD_TO_FILE, enabledState(active && !_snapshot.save && _snapshot.loc.lat != MAXINT));
+    EnableMenuItem(menu, MENU_SAVELOAD_RESTORE_FROM_FILE, enabledState(active && !_snapshot.save));
+    EnableMenuItem(menu, MENU_SAVELOAD_PAUSE, enabledState(active));
+    EnableMenuItem(menu, MENU_SAVELOAD_RESET, enabledState(active && !_snapshot.save && _snapshot.loc.lat != MAXINT));
     EnableMenuItem(menu, MENU_MAX_RANGE, enabledState(active && calibrated));
     EnableMenuItem(menu, MENU_SHOW_TAGS, enabledState(calibrated));
 
@@ -581,6 +623,10 @@ void updateMenu(HMENU menu)
     CheckMenuItem(menu, MENU_MAX_RANGE, checkedState(_maxRange));
     CheckMenuItem(menu, MENU_SHOW_TAGS, checkedState(_showTags));
     CheckMenuItem(menu, MENU_SHOW_CALIBRATION, checkedState(_showCalibration));
+
+    EnableMenuItem(menu, MENU_SHOW_MINI_MENU, MF_ENABLED);
+    EnableMenuItem(menu, MENU_SHOW_ALWAYS_ON_TOP, MF_ENABLED);
+    CheckMenuItem(menu, MENU_SHOW_ALWAYS_ON_TOP, checkedState(_alwaysOnTop));
 
     EnableMenuItem(menu, MENU_LOAD_FLIGHT_PLAN, enabledState(calibrated));
     EnableMenuItem(menu, MENU_LOAD_VRPS, enabledState(calibrated));
@@ -609,7 +655,13 @@ bool windowCallback(ALLEGRO_DISPLAY* display, UINT message,
         // this right click so fix it here.
         SetCursorPos(menuPos.x, menuPos.y);
 
-        HMENU menu = createMenu();
+        HMENU menu;
+        if (_showMiniMenu) {
+            menu = createMiniMenu();
+        }
+        else {
+            menu = createMenu();
+        }
         updateMenu(menu);
         TrackPopupMenu(menu, TPM_RIGHTBUTTON, menuPos.x, menuPos.y, 0, _displayWindow, NULL);
         DestroyMenu(menu);
@@ -814,14 +866,56 @@ void actionMenuItem()
         }
         break;
     }
-    case MENU_TELEPORT_RESTORE_LOCATION:
+    case MENU_SAVELOAD_SAVE_LOCATION:
+    {
+        _snapshot.save = true;
+        break;
+    }
+    case MENU_SAVELOAD_RESTORE_LOCATION:
     {
         _snapshot.restore = true;
         break;
     }
-    case MENU_TELEPORT_SAVE_LOCATION:
+    case MENU_SAVELOAD_TO_FILE:
     {
-        _snapshot.save = true;
+        al_set_window_title(_display, "New Location File");
+        _titleState = -2;
+
+        char* locFile = fileSelectorDialog(al_get_win_window_handle(_display), ".loc\0*.loc\0", true);
+        if (*locFile == '\0') {
+            return;
+        }
+
+        if (saveSnapshot(locFile, _snapshot.loc.lat, _snapshot.loc.lon, _snapshot.heading, _snapshot.bank, _snapshot.pitch, _snapshot.alt, _snapshot.speed)) {
+            // Revert to saved location
+            _snapshot.restore = true;
+        }
+        break;
+    }
+    case MENU_SAVELOAD_RESTORE_FROM_FILE:
+    {
+        al_set_window_title(_display, "Select Location File");
+        _titleState = -2;
+
+        char* locFile = fileSelectorDialog(al_get_win_window_handle(_display), ".loc\0*.loc\0");
+        if (*locFile == '\0') {
+            return;
+        }
+
+        if (loadSnapshot(locFile, &_snapshot.loc.lat, &_snapshot.loc.lon, &_snapshot.heading, &_snapshot.bank, &_snapshot.pitch, &_snapshot.alt, &_snapshot.speed)) {
+            _snapshot.restore = true;
+        }
+        break;
+    }
+    case MENU_SAVELOAD_PAUSE:
+    {
+        _snapshot.pause = true;
+        break;
+    }
+    case MENU_SAVELOAD_RESET:
+    {
+        _snapshot.restore = true;
+        _snapshot.pause = true;
         break;
     }
     case MENU_TELEPORT_FOLLOW:
@@ -906,6 +1000,22 @@ void actionMenuItem()
     {
         _showCalibration = !_showCalibration;
         clearCustomPoints();
+        break;
+    }
+    case MENU_SHOW_MINI_MENU:
+    {
+        _showMiniMenu = !_showMiniMenu;
+        break;
+    }
+    case MENU_SHOW_ALWAYS_ON_TOP:
+    {
+        _alwaysOnTop = !_alwaysOnTop;
+        if (_alwaysOnTop) {
+            SetWindowPos(al_get_win_window_handle(_display), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        }
+        else {
+            SetWindowPos(al_get_win_window_handle(_display), HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        }
         break;
     }
     case MENU_LOAD_FLIGHT_PLAN:
@@ -1627,7 +1737,7 @@ void getIconData(char *model, char *callsign, int altitude, IconData* iconData, 
         return;
     }
 
-    if (strstr(Military_Other, prefixShort) != NULL) {
+    if (strstr(Military_Other, prefixShort) != NULL || strstr(Military_Other2, prefixModel) != NULL) {
         iconData->bmp = _aircraft.militaryOtherBmp;
         iconData->isMilitary = true;
         return;
@@ -1770,7 +1880,7 @@ void drawAiObjects()
             _titleState = -2;
         }
     }
-    else if (strncmp(_aiTitle, _aiTrail[last].callsign, strlen(_aiTrail[last].callsign)) != 0) {
+    else if (_aiTrail[last].count > 0 && strncmp(_aiTitle, _aiTrail[last].callsign, strlen(_aiTrail[last].callsign)) != 0) {
         // Show info in window title
         sprintf(_aiTitle, "%s   %s   %s", _aiTrail[last].callsign, _aiTrail[last].airline, _aiTrail[last].modelType);
         if (strcmp(_aiTrail[last].fromAirport, "Unknown") != 0) {
@@ -2303,7 +2413,7 @@ void updateOwnAircraft()
 /// </summary>
 void createTagBitmap(char *tagText, DrawData* tag, bool isMeasure, bool isElevation)
 {
-    tag->width = 4 + strlen(tagText) * 8;
+    tag->width = 4 + (int)strlen(tagText) * 8;
     tag->height = 10;
 
     tag->bmp = al_create_bitmap(tag->width, tag->height);
@@ -2605,9 +2715,15 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
                         _aiAircraft[i].loc.lon >= locMin.lon && _aiAircraft[i].loc.lon <= locMax.lon)
                     {
                         // AI aircraft has been clicked
-                        if (!_watchInProgress) {
+                        if (!_watchInProgress && strcmp(_aiAircraft[i].callsign, "Unknown") != 0) {
                             strcpy(_watchCallsign, _aiAircraft[i].callsign);
                             _watchInProgress = true;
+                            char msg[256];
+                            sprintf(msg, "Fetching data for aircraft %s", _watchCallsign);
+                            al_set_window_title(_display, msg);
+                            _titleState = 2;
+                            _titleDelay = 100;
+
                         }
                     }
                 }

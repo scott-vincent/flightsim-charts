@@ -11,3 +11,8 @@ enum REQUEST_ID {
     REQ_SNAPSHOT,
     REQ_AI_AIRCRAFT
 };
+
+enum EVENT_ID {
+    KEY_PAUSE_ON,
+    KEY_PAUSE_OFF
+};

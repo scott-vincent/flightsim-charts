@@ -2,7 +2,7 @@
 #include <iostream>
 #include <thread>
 
-const char* versionString = "v2.0.2";
+const char* versionString = "v2.3.0";
 bool _quit = false;
 bool _showAi = false;
 bool _noConnect = false;
@@ -12,7 +12,7 @@ void showChart();
 
 int main(int argc, char **argv)
 {
-    printf("FlightSim Charts %s Copyright (c) 2023 Scott Vincent\n", versionString);
+    printf("FlightSim Charts %s Copyright (c) 2024 Scott Vincent\n", versionString);
 
     for (int i = 1; i < argc; i++) {
         if (_stricmp(argv[i], "showai") == 0) {
@@ -21,6 +21,11 @@ int main(int argc, char **argv)
         if (_stricmp(argv[i], "noconnect") == 0) {
             _noConnect = true;
             _showAi = true;
+        }
+        if (_stricmp(argv[i], "view") == 0) {
+            // View mode to just view charts with no aircraft
+            _noConnect = true;
+            _showAi = false;
         }
     }
 

@@ -11,7 +11,7 @@
 
 const int Port = 52025;
 const int MaxDataSize = 512000;
-const int IntervalSecs = 6;
+const int IntervalSecs = 3;
 const int StaleSecs = 15;
 
 const char* IFR_Default = "Airbus A320 Neo Asobo";
@@ -74,7 +74,7 @@ void getModelMatch(const char* modelMatchFile)
             pos = endPos + 2;
 
             if (_strnicmp(pos, "TypeCode=\"", 10) != 0) {
-                printf("Bad model match TypeCode at line %d\n", linenum);
+                //printf("Bad model match TypeCode at line %d\n", linenum);
                 continue;
             }
             pos += 10;
@@ -384,6 +384,10 @@ int getTrail(char *line)
         return false;
     }
 
+    if (strcmp(_aiTrail[t].callsign, "Unknown") == 0) {
+        return -1;
+    }
+
     int pos = 3;
     int col = 0;
     int i = 0;
@@ -444,7 +448,41 @@ void processData(char *data)
         int cols = sscanf(line, "%15[^,],%31[^,],%15[^,],%lf,%lf,%lf,%lf,%lf",
             ai.callsign, ai.airline, ai.model, &ai.loc.lat, &ai.loc.lon, &ai.heading, &ai.alt, &ai.speed);
 
-        if (cols != 8) {
+        if (cols == 0) {
+            // Missing callsign
+            strcpy(ai.callsign, "-");
+            cols = sscanf(line, ",%31[^,],%15[^,],%lf,%lf,%lf,%lf,%lf",
+                ai.airline, ai.model, &ai.loc.lat, &ai.loc.lon, &ai.heading, &ai.alt, &ai.speed);
+
+            if (cols == 0) {
+                // Missing callsign and airline
+                *ai.airline = '\0';
+                cols = sscanf(line, ",,%15[^,],%lf,%lf,%lf,%lf,%lf",
+                    ai.model, &ai.loc.lat, &ai.loc.lon, &ai.heading, &ai.alt, &ai.speed);
+            }
+
+            if (cols == 0) {
+                // Missing callsign and airline and model
+                *ai.model = '\0';
+                cols = sscanf(line, ",,,%lf,%lf,%lf,%lf,%lf",
+                    &ai.loc.lat, &ai.loc.lon, &ai.heading, &ai.alt, &ai.speed);
+            }
+        }
+        else if (cols == 1) {
+            // Missing airline
+            *ai.airline = '\0';
+            cols = sscanf(line, "%15[^,],,%15[^,],%lf,%lf,%lf,%lf,%lf",
+                ai.callsign, ai.model, &ai.loc.lat, &ai.loc.lon, &ai.heading, &ai.alt, &ai.speed);
+
+            if (cols == 1) {
+                // Missing airline and model
+                *ai.model = '\0';
+                cols = sscanf(line, "%15[^,],,,%lf,%lf,%lf,%lf,%lf",
+                    ai.callsign, &ai.loc.lat, &ai.loc.lon, &ai.heading, &ai.alt, &ai.speed);
+            }
+        }
+
+        if (cols < 5) {
             printf("Listener bad data ignored: %s (%d)\n", line, cols);
         }
         else {
@@ -587,6 +625,7 @@ bool listenerRead(const char* request, int waitMillis, bool immediate)
         return false;
     }
 
+    //printf("Request: %s\n", request);
     int bytes = send(_sockfd, request, strlen(request), 0);
     if (bytes <= 0) {
         printf("Failed to request remote data\n");
@@ -597,11 +636,12 @@ bool listenerRead(const char* request, int waitMillis, bool immediate)
     }
 
     // Wait for data
-    int timeout = 1500;
+    int timeout = 15000;
     setsockopt(_sockfd, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(int));
 
     bool success = false;
     bytes = recv(_sockfd, _listenerData, MaxDataSize - 1, 0);
+    //printf("Received: %d bytes\n", bytes);
     if (bytes > 0) {
         int expected = atoi(_listenerData);
         char *data = strchr(_listenerData, '\n') + 1;
@@ -632,7 +672,7 @@ bool listenerRead(const char* request, int waitMillis, bool immediate)
                     removeStale(true);
                 }
                 removeFixed();
-                
+
                 if (strncmp(&data[8], "all", 3) == 0 || strncmp(&data[8], "wayp", 4) == 0) {
                     _listenerInitFetch = true;
                 }

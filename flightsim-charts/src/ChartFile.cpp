@@ -75,6 +75,9 @@ void saveSettings()
     fprintf(outf, "%s\n", _settings.chart);
     fprintf(outf, "FramesPerSec = %d\n", _settings.framesPerSec);
     fprintf(outf, "%s\n", _settings.location);
+    fprintf(outf, "%d,%d,%d\n", _settings.showTags, _settings.showFixedTags,  _settings.showAiInfoTags);
+    fprintf(outf, "%d,%d,%d\n", _settings.showAiPhotos, _settings.showAiMilitaryOnly, _settings.showInstrumentHud);
+    fprintf(outf, "%d,%d,%d\n", _settings.showAlwaysOnTop, _settings.showMiniMenu, 0);
 
     fclose(outf);
 }
@@ -92,10 +95,13 @@ void loadSettings()
         int y;
         int width;
         int height;
+        int toggle1;
+        int toggle2;
+        int toggle3;
 
         *_settings.location = '\0';
 
-        while (fgets(line, 256, inf) && nextLine < 4) {
+        while (fgets(line, 256, inf)) {
             while (strlen(line) > 0 && (line[strlen(line) - 1] == ' '
                 || line[strlen(line) - 1] == '\r' || line[strlen(line) - 1] == '\n')) {
                 line[strlen(line) - 1] = '\0';
@@ -133,6 +139,35 @@ void loadSettings()
             case 4:
             {
                 strcpy(_settings.location, line);
+                break;
+            }
+            case 5:
+            {
+                int items = sscanf(line, "%d,%d,%d", &toggle1, &toggle2, &toggle3);
+                if (items == 3) {
+                    _settings.showTags = toggle1;
+                    _settings.showFixedTags = toggle2;
+                    _settings.showAiInfoTags = toggle3;
+                }
+                break;
+            }
+            case 6:
+            {
+                int items = sscanf(line, "%d,%d,%d", &toggle1, &toggle2, &toggle3);
+                if (items == 3) {
+                    _settings.showAiPhotos = toggle1;
+                    _settings.showAiMilitaryOnly = toggle2;
+                    _settings.showInstrumentHud = toggle3;
+                }
+                break;
+            }
+            case 7:
+            {
+                int items = sscanf(line, "%d,%d,%d", &toggle1, &toggle2, &toggle3);
+                if (items == 3) {
+                    _settings.showAlwaysOnTop = toggle1;
+                    _settings.showMiniMenu = toggle2;
+                }
                 break;
             }
             }

@@ -105,15 +105,7 @@ int _drawDataSize = sizeof(DrawData);
 int _mouseStartZ = 0;
 int _titleState;
 int _titleDelay;
-bool _showTags = true;
-bool _showFixedTags = true;
-bool _showAiInfoTags = true;
-bool _showAiPhotos = true;
-bool _showAiMilitaryOnly = false;
 bool _showCalibration = false;
-bool _showInstrumentHud = true;
-bool _alwaysOnTop = false;
-bool _showMiniMenu = false;
 Locn _clickedLoc;
 Position _clickedPos;
 Position _clipboardPos;
@@ -622,13 +614,13 @@ void updateMenu(HMENU menu)
         EnableMenuItem(menu, MENU_TELEPORT_SET_AI_HOME_HERE, MF_ENABLED);
         EnableMenuItem(menu, MENU_TELEPORT_SET_AI_HOME_CLIPBOARD, MF_ENABLED);
         EnableMenuItem(menu, MENU_SHOW_FIXED_TAGS, MF_ENABLED);
-        CheckMenuItem(menu, MENU_SHOW_FIXED_TAGS, checkedState(_showFixedTags));
+        CheckMenuItem(menu, MENU_SHOW_FIXED_TAGS, checkedState(_settings.showFixedTags));
         EnableMenuItem(menu, MENU_SHOW_AI_INFO_TAGS, MF_ENABLED);
-        CheckMenuItem(menu, MENU_SHOW_AI_INFO_TAGS, checkedState(_showAiInfoTags));
+        CheckMenuItem(menu, MENU_SHOW_AI_INFO_TAGS, checkedState(_settings.showAiInfoTags));
         EnableMenuItem(menu, MENU_SHOW_AI_PHOTOS, MF_ENABLED);
-        CheckMenuItem(menu, MENU_SHOW_AI_PHOTOS, checkedState(_showAiPhotos));
+        CheckMenuItem(menu, MENU_SHOW_AI_PHOTOS, checkedState(_settings.showAiPhotos));
         EnableMenuItem(menu, MENU_SHOW_AI_MILITARY_ONLY, MF_ENABLED);
-        CheckMenuItem(menu, MENU_SHOW_AI_MILITARY_ONLY, checkedState(_showAiMilitaryOnly));
+        CheckMenuItem(menu, MENU_SHOW_AI_MILITARY_ONLY, checkedState(_settings.showAiMilitaryOnly));
         EnableMenuItem(menu, MENU_CLEAR_AI_TRAILS, MF_ENABLED);
     }
 
@@ -636,13 +628,13 @@ void updateMenu(HMENU menu)
     EnableMenuItem(menu, MENU_SHOW_INSTRUMENT_HUD, enabledState(calibrated));
 
     CheckMenuItem(menu, MENU_MAX_RANGE, checkedState(_maxRange));
-    CheckMenuItem(menu, MENU_SHOW_TAGS, checkedState(_showTags));
+    CheckMenuItem(menu, MENU_SHOW_TAGS, checkedState(_settings.showTags));
     CheckMenuItem(menu, MENU_SHOW_CALIBRATION, checkedState(_showCalibration));
-    CheckMenuItem(menu, MENU_SHOW_INSTRUMENT_HUD, checkedState(_showInstrumentHud));
+    CheckMenuItem(menu, MENU_SHOW_INSTRUMENT_HUD, checkedState(_settings.showInstrumentHud));
 
     EnableMenuItem(menu, MENU_SHOW_MINI_MENU, MF_ENABLED);
     EnableMenuItem(menu, MENU_SHOW_ALWAYS_ON_TOP, MF_ENABLED);
-    CheckMenuItem(menu, MENU_SHOW_ALWAYS_ON_TOP, checkedState(_alwaysOnTop));
+    CheckMenuItem(menu, MENU_SHOW_ALWAYS_ON_TOP, checkedState(_settings.showAlwaysOnTop));
 
     EnableMenuItem(menu, MENU_LOAD_FLIGHT_PLAN, enabledState(calibrated));
     EnableMenuItem(menu, MENU_LOAD_VRPS, enabledState(calibrated));
@@ -672,7 +664,7 @@ bool windowCallback(ALLEGRO_DISPLAY* display, UINT message,
         SetCursorPos(menuPos.x, menuPos.y);
 
         HMENU menu;
-        if (_showMiniMenu) {
+        if (_settings.showMiniMenu) {
             menu = createMiniMenu();
         }
         else {
@@ -697,6 +689,16 @@ void rotateAircraft(double adjustAngle)
     _teleport.loc.lon = _aircraftData.loc.lon;
     _teleport.heading = _aircraftData.heading + _lastRotate;
     _teleport.inProgress = true;
+}
+
+void setAlwaysOnTop()
+{
+    if (_settings.showAlwaysOnTop) {
+        SetWindowPos(al_get_win_window_handle(_display), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    }
+    else {
+        SetWindowPos(al_get_win_window_handle(_display), HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    }
 }
 
 void actionMenuItem()
@@ -981,27 +983,32 @@ void actionMenuItem()
     }
     case MENU_SHOW_TAGS:
     {
-        _showTags = !_showTags;
+        _settings.showTags = !_settings.showTags;
+        saveSettings();
         break;
     }
     case MENU_SHOW_FIXED_TAGS:
     {
-        _showFixedTags = !_showFixedTags;
+        _settings.showFixedTags = !_settings.showFixedTags;
+        saveSettings();
         break;
     }
     case MENU_SHOW_AI_INFO_TAGS:
     {
-        _showAiInfoTags = !_showAiInfoTags;
+        _settings.showAiInfoTags = !_settings.showAiInfoTags;
+        saveSettings();
         break;
     }
     case MENU_SHOW_AI_PHOTOS:
     {
-        _showAiPhotos = !_showAiPhotos;
+        _settings.showAiPhotos = !_settings.showAiPhotos;
+        saveSettings();
         break;
     }
     case MENU_SHOW_AI_MILITARY_ONLY:
     {
-        _showAiMilitaryOnly = !_showAiMilitaryOnly;
+        _settings.showAiMilitaryOnly = !_settings.showAiMilitaryOnly;
+        saveSettings();
         break;
     }
     case MENU_CLEAR_AI_TRAILS:
@@ -1020,23 +1027,21 @@ void actionMenuItem()
     }
     case MENU_SHOW_INSTRUMENT_HUD:
     {
-        _showInstrumentHud = !_showInstrumentHud;
+        _settings.showInstrumentHud = !_settings.showInstrumentHud;
+        saveSettings();
         break;
     }
     case MENU_SHOW_MINI_MENU:
     {
-        _showMiniMenu = !_showMiniMenu;
+        _settings.showMiniMenu = !_settings.showMiniMenu;
+        saveSettings();
         break;
     }
     case MENU_SHOW_ALWAYS_ON_TOP:
     {
-        _alwaysOnTop = !_alwaysOnTop;
-        if (_alwaysOnTop) {
-            SetWindowPos(al_get_win_window_handle(_display), HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-        }
-        else {
-            SetWindowPos(al_get_win_window_handle(_display), HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-        }
+        _settings.showAlwaysOnTop = !_settings.showAlwaysOnTop;
+        saveSettings();
+        setAlwaysOnTop();
         break;
     }
     case MENU_LOAD_FLIGHT_PLAN:
@@ -1843,18 +1848,18 @@ void drawOtherAircraft()
             IconData iconData;
             getIconData(_otherAircraftData[i].model, _otherAircraftData[i].callsign, _otherAircraftData[i].alt, &iconData, _otherAircraftData[i].wingSpan);
 
-            if (_showAiMilitaryOnly && !iconData.isMilitary) {
+            if (_settings.showAiMilitaryOnly && !iconData.isMilitary) {
                 continue;
             }
 
             al_draw_scaled_rotated_bitmap(iconData.bmp, iconData.halfWidth, iconData.halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _otherAircraftData[i].heading * DegreesToRadians, 0);
 
-            if (_showTags) {
+            if (_settings.showTags) {
                 if (_otherTag[i].tag.bmp != NULL) {
                     // Draw tag to right of aircraft
                     al_draw_bitmap(_otherTag[i].tag.bmp, pos.x + 1 + iconData.halfHeight * 1.5 * _aircraft.scale, pos.y - _otherTag[i].tag.height / 2.0, 0);
 
-                    if (_showAiInfoTags) {
+                    if (_settings.showAiInfoTags) {
                         // Draw second tag with alt and speed
                         if (_otherTag[i].moreTag.bmp == NULL) {
                             createTagBitmap(_otherTag[i].moreTagText, &_otherTag[i].moreTag);
@@ -1948,14 +1953,14 @@ void drawAiObjects()
                 IconData iconData;
                 getIconData(_aiAircraft[i].model, _aiAircraft[i].callsign, _aiAircraft[i].alt, &iconData, 0);
 
-                if (_showAiMilitaryOnly && !iconData.isMilitary) {
+                if (_settings.showAiMilitaryOnly && !iconData.isMilitary) {
                     continue;
                 }
 
                 try {
                     al_draw_scaled_rotated_bitmap(iconData.bmp, iconData.halfWidth, iconData.halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _aiAircraft[i].heading * DegreesToRadians, 0);
 
-                    if (_showTags) {
+                    if (_settings.showTags) {
                         if (_aiAircraft[i].tagData.tag.bmp == NULL) {
                             createTagBitmap(_aiAircraft[i].tagData.tagText, &_aiAircraft[i].tagData.tag);
                         }
@@ -1963,7 +1968,7 @@ void drawAiObjects()
                         // Draw tag to right of aircraft
                         al_draw_bitmap(_aiAircraft[i].tagData.tag.bmp, pos.x + 1 + iconData.halfHeight * _aircraft.scale, pos.y - _aiAircraft[i].tagData.tag.height / 2.0, 0);
 
-                        if (_showAiInfoTags) {
+                        if (_settings.showAiInfoTags) {
                             // Add a second tag with alt and speed
                             sprintf(moreTagText, "%.0lf %.0lf", _aiAircraft[i].alt, _aiAircraft[i].speed);
                             if (strcmp(_aiAircraft[i].tagData.moreTagText, moreTagText) != 0) {
@@ -2021,7 +2026,7 @@ void drawAiObjects()
             try {
                 al_draw_scaled_rotated_bitmap(bmp, halfWidth, halfHeight, pos.x, pos.y, _aircraft.scale, _aircraft.scale, _aiFixed[i].heading * DegreesToRadians, 0);
 
-                if (_showTags) {
+                if (_settings.showTags) {
                     if (_aiFixed[i].tagData.tag.bmp == NULL) {
                         createTagBitmap(_aiFixed[i].tagData.tagText, &_aiFixed[i].tagData.tag);
                     }
@@ -2030,7 +2035,7 @@ void drawAiObjects()
                     al_draw_bitmap(_aiFixed[i].tagData.tag.bmp, pos.x + tagShift * _aircraft.scale, pos.y - _aiFixed[i].tagData.tag.height / 4, 0);
                 }
 
-                if (_showFixedTags && *_aiFixed[i].tagData.moreTagText != '\0') {
+                if (_settings.showFixedTags && *_aiFixed[i].tagData.moreTagText != '\0') {
                     if (_aiFixed[i].tagData.moreTag.bmp == NULL) {
                         createTagBitmap(_aiFixed[i].tagData.moreTagText, &_aiFixed[i].tagData.moreTag);
                     }
@@ -2279,7 +2284,7 @@ void render()
         drawWind();
     }
 
-    if (_showInstrumentHud) {
+    if (_settings.showInstrumentHud) {
         drawInstrumentHud();
     }
 }
@@ -2728,7 +2733,7 @@ void doUpdate()
     updateOwnAircraft();
     updateWind();
 
-    if (_showInstrumentHud) {
+    if (_settings.showInstrumentHud) {
         updateHud();
     }
 
@@ -2857,7 +2862,7 @@ void doMouseButton(ALLEGRO_EVENT* event, bool isPress)
                     IconData iconData;
                     getIconData(_aiAircraft[i].model, _aiAircraft[i].callsign, _aiAircraft[i].alt, &iconData, 0);
 
-                    if (_showAiMilitaryOnly && !iconData.isMilitary) {
+                    if (_settings.showAiMilitaryOnly && !iconData.isMilitary) {
                         continue;
                     }
 
@@ -2941,6 +2946,8 @@ void showChart()
         cleanup();
         return;
     }
+
+    setAlwaysOnTop();
 
     // If aircraft is initialised always start on the closest chart
     closestChart(&_aircraftData.loc);

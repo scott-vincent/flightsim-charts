@@ -135,6 +135,14 @@ struct Settings {
     char chart[256];
     int framesPerSec;
     char location[256];
+    bool showTags = true;
+    bool showFixedTags = true;
+    bool showAiInfoTags = true;
+    bool showAiPhotos = true;
+    bool showAiMilitaryOnly = false;
+    bool showInstrumentHud = true;
+    bool showAlwaysOnTop = false;
+    bool showMiniMenu = false;
 };
 
 struct CalibratedData {

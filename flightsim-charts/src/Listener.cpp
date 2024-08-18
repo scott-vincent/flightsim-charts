@@ -34,7 +34,7 @@ extern AI_Fixed _aiFixed[Max_AI_Fixed];
 extern int _aiModelMatchCount;
 extern AI_ModelMatch _aiModelMatch[Max_AI_ModelMatch];
 extern AI_Trail _aiTrail[3];
-extern bool _showAiPhotos;
+extern Settings _settings;
 extern bool _clearAll;
 
 
@@ -688,7 +688,7 @@ bool listenerRead(const char* request, int waitMillis, bool immediate)
                     *eol = '\0';
                 }
 
-                if (_showAiPhotos) {
+                if (_settings.showAiPhotos) {
                     // Launch a browser to view the aircraft image
                     ShellExecute(0, 0, img, 0, 0, SW_SHOW);
                 }

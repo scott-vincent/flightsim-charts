@@ -638,6 +638,7 @@ void updateMenu(HMENU menu)
     CheckMenuItem(menu, MENU_MAX_RANGE, checkedState(_maxRange));
     CheckMenuItem(menu, MENU_SHOW_TAGS, checkedState(_showTags));
     CheckMenuItem(menu, MENU_SHOW_CALIBRATION, checkedState(_showCalibration));
+    CheckMenuItem(menu, MENU_SHOW_INSTRUMENT_HUD, checkedState(_showInstrumentHud));
 
     EnableMenuItem(menu, MENU_SHOW_MINI_MENU, MF_ENABLED);
     EnableMenuItem(menu, MENU_SHOW_ALWAYS_ON_TOP, MF_ENABLED);

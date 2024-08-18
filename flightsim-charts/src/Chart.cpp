@@ -9,6 +9,7 @@
 #include "ChartFile.h"
 #include "ChartCoords.h"
 #include "ChartFlightPlan.h"
+#include "ChartServer.h"
 
 // Constants
 const char ProgramName[] = "FlightSim Charts";
@@ -42,6 +43,8 @@ extern bool _quit;
 extern LocData _aircraftData;
 extern WindData _windData;
 extern OtherData _otherAircraftData[MAX_AIRCRAFT];
+extern char* _chartServer;
+extern ChartServerData _chartServerData;
 extern int _otherAircraftCount;
 extern int _otherDataSize;
 extern TeleportData _teleport;
@@ -60,6 +63,7 @@ extern char _watchCallsign[16];
 extern bool _watchInProgress;
 extern char* _listenerHome;
 extern bool _clearAll;
+extern char* chartServer;
 
 // Variables
 double DegreesToRadians = ALLEGRO_PI / 180.0f;
@@ -83,6 +87,9 @@ DrawData _ring;
 DrawData _arrow;
 DrawData _windInfo;
 DrawData _windInfoCopy;
+DrawData _instrumentHud;
+DrawData _instrumentHudCopyLeft;
+DrawData _instrumentHudCopyRight;
 MouseData _mouseData;
 ChartData _chartData;
 HANDLE _bmpMutex = NULL;
@@ -104,6 +111,7 @@ bool _showAiInfoTags = true;
 bool _showAiPhotos = true;
 bool _showAiMilitaryOnly = false;
 bool _showCalibration = false;
+bool _showInstrumentHud = true;
 bool _alwaysOnTop = false;
 bool _showMiniMenu = false;
 Locn _clickedLoc;
@@ -134,6 +142,7 @@ int _obstacleCount = 0;
 bool _showObstacleNames = false;
 ElevationData* _elevations;
 int _elevationCount = 0;
+int _hudUpdate = -1;
 
 
 enum MENU_ITEMS {
@@ -174,6 +183,7 @@ enum MENU_ITEMS {
     MENU_SHOW_AI_MILITARY_ONLY,
     MENU_CLEAR_AI_TRAILS,
     MENU_SHOW_CALIBRATION,
+    MENU_SHOW_INSTRUMENT_HUD,
     MENU_SHOW_MINI_MENU,
     MENU_SHOW_ALWAYS_ON_TOP,
     MENU_LOAD_FLIGHT_PLAN,
@@ -382,6 +392,9 @@ void initVars()
     _arrow.bmp = NULL;
     _windInfo.bmp = NULL;
     _windInfoCopy.bmp = NULL;
+    _instrumentHud.bmp = NULL;
+    _instrumentHudCopyLeft.bmp = NULL;
+    _instrumentHudCopyRight.bmp = NULL;
 
     _bmpMutex = CreateMutex(NULL, FALSE, NULL);
 
@@ -487,6 +500,7 @@ HMENU createMenu()
         AppendMenu(showMenu, MF_STRING, MENU_CLEAR_AI_TRAILS, "Clear AI trails");
     }
     AppendMenu(showMenu, MF_STRING, MENU_SHOW_CALIBRATION, "Show calibration");
+    AppendMenu(showMenu, MF_STRING, MENU_SHOW_INSTRUMENT_HUD, "Show instrument HUD");
     AppendMenu(showMenu, MF_STRING, MENU_SHOW_MINI_MENU, "Show mini menu");
     AppendMenu(showMenu, MF_STRING, MENU_SHOW_ALWAYS_ON_TOP, "Always on top");
 
@@ -619,6 +633,7 @@ void updateMenu(HMENU menu)
     }
 
     EnableMenuItem(menu, MENU_SHOW_CALIBRATION, enabledState(calibrated));
+    EnableMenuItem(menu, MENU_SHOW_INSTRUMENT_HUD, enabledState(calibrated));
 
     CheckMenuItem(menu, MENU_MAX_RANGE, checkedState(_maxRange));
     CheckMenuItem(menu, MENU_SHOW_TAGS, checkedState(_showTags));
@@ -1002,6 +1017,11 @@ void actionMenuItem()
         clearCustomPoints();
         break;
     }
+    case MENU_SHOW_INSTRUMENT_HUD:
+    {
+        _showInstrumentHud = !_showInstrumentHud;
+        break;
+    }
     case MENU_SHOW_MINI_MENU:
     {
         _showMiniMenu = !_showMiniMenu;
@@ -1249,6 +1269,9 @@ void cleanup()
     cleanupBitmap(_arrow.bmp);
     cleanupBitmap(_windInfo.bmp);
     cleanupBitmap(_windInfoCopy.bmp);
+    cleanupBitmap(_instrumentHud.bmp);
+    cleanupBitmap(_instrumentHudCopyLeft.bmp);
+    cleanupBitmap(_instrumentHudCopyRight.bmp);
     cleanupTagBitmap(&_measureTag.tag);
 
     // Cleanup tags
@@ -1595,6 +1618,24 @@ bool initWind()
     al_set_target_backbuffer(_display);
 
     _windInfoCopy.bmp = al_create_bitmap(_windInfo.width, _windInfo.height);
+
+    return true;
+}
+
+bool initInstrumentHud()
+{
+    // Draw HUD
+    _instrumentHud.width = 85;
+    _instrumentHud.height = 33;
+    _instrumentHud.bmp = al_create_bitmap(_instrumentHud.width, _instrumentHud.height);
+
+    // fill with background colour
+    al_set_target_bitmap(_instrumentHud.bmp);
+    al_clear_to_color(al_map_rgb(0x40, 0x40, 0x40));
+    al_set_target_backbuffer(_display);
+
+    _instrumentHudCopyLeft.bmp = al_create_bitmap(_instrumentHud.width, _instrumentHud.height);
+    _instrumentHudCopyRight.bmp = al_create_bitmap(_instrumentHud.width, _instrumentHud.height);
 
     return true;
 }
@@ -2099,6 +2140,24 @@ void drawObstacles()
     }
 }
 
+void drawWind()
+{
+    // Draw wind at top centre of display
+    int x = _displayWidth / 2;
+    int y = 40;
+    al_draw_scaled_rotated_bitmap(_arrow.bmp, _arrow.x, _arrow.y, x, y, 0.15, 0.2, (180 + _windDirection) * DegreesToRadians, 0);
+    al_draw_bitmap_region(_windInfoCopy.bmp, 0, 0, _windInfoCopy.width, _windInfo.height, x + 26, y - _windInfo.height / 2.0, 0);
+}
+
+void drawInstrumentHud()
+{
+    // Draw HUD at bottom left and bottom right of display
+    int x = _displayWidth - _instrumentHud.width;
+    int y = _displayHeight - _instrumentHud.height;
+    al_draw_bitmap(_instrumentHudCopyLeft.bmp, 5, y - 5, 0);
+    al_draw_bitmap(_instrumentHudCopyRight.bmp, x - 5, y - 5, 0);
+}
+
 void render()
 {
     if (*_settings.chart == '\0') {
@@ -2216,11 +2275,11 @@ void render()
     }
 
     if (_windDirection != -1) {
-        // Draw wind at top centre of display
-        int x = _displayWidth / 2;
-        int y = 40;
-        al_draw_scaled_rotated_bitmap(_arrow.bmp, _arrow.x, _arrow.y, x, y, 0.15, 0.2, (180 + _windDirection) * DegreesToRadians, 0);
-        al_draw_bitmap_region(_windInfoCopy.bmp, 0, 0, _windInfoCopy.width, _windInfo.height, x + 26, y - _windInfo.height / 2.0, 0);
+        drawWind();
+    }
+
+    if (_showInstrumentHud) {
+        drawInstrumentHud();
     }
 }
 
@@ -2247,6 +2306,12 @@ bool doInit()
     if (!initWind()) {
         return false;
     }
+
+    if (!initInstrumentHud()) {
+        return false;
+    }
+
+    chartServerInit();
 
     return true;
 }
@@ -2535,6 +2600,86 @@ void updateWind()
     }
 }
 
+void updateHud()
+{
+    ALLEGRO_COLOR colour = al_map_rgb(0xf0, 0xf0, 0xf0);
+    bool active = _chartServerData.heading != 999;
+
+
+    if (_hudUpdate == 2 || _hudUpdate == -1) {
+        // Create HUD left copy
+        al_set_target_bitmap(_instrumentHudCopyLeft.bmp);
+        al_draw_bitmap(_instrumentHud.bmp, 0, 0, 0);
+
+        char text[16];
+        if (active) {
+            sprintf(text, "hdg %d", _chartServerData.headingMag);
+        }
+        else {
+            sprintf(text, "hdg");
+        }
+        al_draw_text(_font, colour, 3, 3, 0, text);
+
+        if (active) {
+            sprintf(text, "spd %d", _chartServerData.speed);
+        }
+        else {
+            sprintf(text, "spd");
+        }
+        al_draw_text(_font, colour, 3, 13, 0, text);
+
+        if (active) {
+            sprintf(text, "alt %d", _chartServerData.altitude);
+        }
+        else {
+            sprintf(text, "alt");
+        }
+        al_draw_text(_font, colour, 3, 23, 0, text);
+
+        al_set_target_backbuffer(_display);
+    }
+
+    if (_hudUpdate == 1 || _hudUpdate == -1) {
+        // Create HUD right copy
+        al_set_target_bitmap(_instrumentHudCopyRight.bmp);
+        al_draw_bitmap(_instrumentHud.bmp, 0, 0, 0);
+
+        char text[16];
+        if (active) {
+            sprintf(text, "flaps %d", _chartServerData.flaps);
+        }
+        else {
+            sprintf(text, "flaps");
+        }
+        al_draw_text(_font, colour, 3, 3, 0, text);
+
+        if (active) {
+            sprintf(text, " trim %d", _chartServerData.trim);
+        }
+        else {
+            sprintf(text, " trim");
+        }
+        al_draw_text(_font, colour, 3, 13, 0, text);
+
+        if (active) {
+            sprintf(text, " vs %d", _chartServerData.verticalSpeed);
+        }
+        else {
+            sprintf(text, " vs");
+        }
+        al_draw_text(_font, colour, 3, 23, 0, text);
+
+        al_set_target_backbuffer(_display);
+    }
+
+    if (_hudUpdate > 0) {
+        _hudUpdate--;
+    }
+    else {
+        _hudUpdate = 2;
+    }
+}
+
 /// <summary>
 /// Update everything before the next frame
 /// </summary>
@@ -2581,6 +2726,10 @@ void doUpdate()
 
     updateOwnAircraft();
     updateWind();
+
+    if (_showInstrumentHud) {
+        updateHud();
+    }
 
     // Take a new snapshot of the other aircraft
     _snapshotOtherCount = _otherAircraftCount;

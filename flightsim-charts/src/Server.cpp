@@ -3,8 +3,10 @@
 #include <thread>
 #include "flightsim-charts.h"
 #include "ChartCoords.h"
+#include "ChartServer.h"
 #include "Server.h"
 #include "Listener.h"
+#include "ChartServer.h"
 #include "simconnect.h"
 
 // Externals
@@ -19,6 +21,8 @@ LocData _aircraftData;
 OtherData _otherData;
 OtherData _otherAircraftData[MAX_AIRCRAFT];
 OtherData _newOtherAircraftData[MAX_AIRCRAFT];
+char* _chartServer;
+ChartServerData _chartServerData;
 int _otherAircraftCount = 0;
 int _locDataSize = sizeof(LocData);
 int _windDataSize = sizeof(WindData);
@@ -94,9 +98,16 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
             // Check for fake data that FS2020 sends before you have selected an airport
             if (_locData.loc.lat > -0.02 && _locData.loc.lat < 0.02 && _locData.loc.lon > -0.02 && _locData.loc.lon < 0.02 && (_locData.heading > 359.9 || _locData.heading < 0.1)) {
                 _aircraftData.loc.lat = MAXINT;
+                chartServerCleanup();
             }
             else {
                 memcpy(&_aircraftData, &_locData, _locDataSize);
+                updateInstrumentHud(&_locData);
+
+                int command = chartServerSend();
+                if (command > 0) {
+                    printf("Received command %d from chart-server\n", command);
+                }
             }
 
             if (_teleport.inProgress) {
@@ -328,7 +339,7 @@ void init()
     addDataDef(DEF_SNAPSHOT, "Plane Bank Degrees", "Degrees");
     addDataDef(DEF_SNAPSHOT, "Plane Pitch Degrees", "Degrees");
     // Rest of SNAPSHOT data after teleport
-    addDataDef(DEF_SNAPSHOT, "Plane Alt Above Ground", "Feet");
+    addDataDef(DEF_SNAPSHOT, "Indicated Altitude", "Feet");
     addDataDef(DEF_SNAPSHOT, "Airspeed Indicated", "Knots");
     _snapshot.dataSize = _snapshotDataSize;
 
@@ -338,12 +349,16 @@ void init()
     addDataDef(DEF_SELF, "Plane Heading Degrees True", "Degrees");
     addDataDef(DEF_SELF, "Plane Bank Degrees", "Degrees");
     addDataDef(DEF_SELF, "Plane Pitch Degrees", "Degrees");
-    addDataDef(DEF_SELF, "Plane Alt Above Ground", "Feet");
+    addDataDef(DEF_SELF, "Indicated Altitude", "Feet");
     addDataDef(DEF_SELF, "Airspeed Indicated", "Knots");
     // Rest of SELF data after snapshot
     addDataDef(DEF_SELF, "Wing Span", "Feet");
     addDataDef(DEF_SELF, "Atc Id", "string");
     addDataDef(DEF_SELF, "Atc Model", "string");
+    addDataDef(DEF_SELF, "Plane Heading Degrees Magnetic", "Degrees");
+    addDataDef(DEF_SELF, "Trailing Edge Flaps Left Angle", "Degrees");
+    addDataDef(DEF_SELF, "Elevator Trim Pct", "Percent");
+    addDataDef(DEF_SELF, "Vertical Speed", "feet per minute");
     addDataDef(DEF_SELF, "Ambient Wind Direction", "Degrees");
     addDataDef(DEF_SELF, "Ambient Wind Velocity", "Knots");
 
@@ -395,6 +410,7 @@ void cleanUp()
     }
 
     listenerCleanup();
+    chartServerCleanup();
 
     printf("Finished\n");
 }
@@ -440,6 +456,7 @@ void server()
                 _aircraftData.loc.lat = MAXINT;
                 _otherAircraftCount = 0;
                 printf(WaitMsg);
+                chartServerCleanup();
             }
         }
         else if (retryDelay > 0) {

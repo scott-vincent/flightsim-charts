@@ -10,7 +10,7 @@ const int MAX_OBSTACLE = 5000;
 const int AIRCRAFT_RANGE = 20000;   // metres
 const int MAX_RANGE = 200000;       // metres
 const int WINGSPAN_SMALL = 60;      // feet
-const char DefaultChart[] = "Airport Charts\\Blackbushe & Surrounding Area.png";
+const char DefaultChart[] = "Airport Charts\\London & Surrounding Area.png";
 const int DefaultFPS = 8;
 const char DegreesSymbol[] = "\xC2\xB0";
 
@@ -91,6 +91,10 @@ struct LocData {
     double wingSpan;
     char callsign[32];
     char model[32];
+    double headingMag;
+    double flaps;
+    double trim;
+    double verticalSpeed;
 };
 
 struct WindData {

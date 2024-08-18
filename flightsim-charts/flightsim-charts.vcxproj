@@ -188,6 +188,7 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="headers\ChartServer.h" />
     <ClInclude Include="headers\ChartCoords.h" />
     <ClInclude Include="headers\ChartFile.h" />
     <ClInclude Include="headers\ChartFlightPlan.h" />
@@ -204,6 +205,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Chart.cpp" />
+    <ClCompile Include="src\chartServer.cpp" />
     <ClCompile Include="src\ChartCoords.cpp" />
     <ClCompile Include="src\ChartFile.cpp" />
     <ClCompile Include="src\ChartFlightPlan.cpp" />

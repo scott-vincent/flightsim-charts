@@ -5,7 +5,7 @@
 
 // Connects to chart-server (if there is one).
 // Comment out next line to disable chart-server.
-#define EXPERIMENTAL
+//#define EXPERIMENTAL
 
 
 const int Port = 52120;

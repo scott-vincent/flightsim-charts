@@ -13,6 +13,7 @@ struct ChartServerData
     int flaps = 0;
     int trim = 0;
     int verticalSpeed = 0;
+    int brake = 0;
 };
 
 void chartServerInit();

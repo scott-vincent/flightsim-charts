@@ -90,6 +90,8 @@ DrawData _windInfoCopy;
 DrawData _instrumentHud;
 DrawData _instrumentHudCopyLeft;
 DrawData _instrumentHudCopyRight;
+DrawData _instrumentHudBrake;
+DrawData _instrumentHudBrakeCopy;
 MouseData _mouseData;
 ChartData _chartData;
 HANDLE _bmpMutex = NULL;
@@ -135,6 +137,7 @@ bool _showObstacleNames = false;
 ElevationData* _elevations;
 int _elevationCount = 0;
 int _hudUpdate = -1;
+bool hudShowBrake = false;
 
 
 enum MENU_ITEMS {
@@ -387,6 +390,8 @@ void initVars()
     _instrumentHud.bmp = NULL;
     _instrumentHudCopyLeft.bmp = NULL;
     _instrumentHudCopyRight.bmp = NULL;
+    _instrumentHudBrake.bmp = NULL;
+    _instrumentHudBrakeCopy.bmp = NULL;
 
     _bmpMutex = CreateMutex(NULL, FALSE, NULL);
 
@@ -1278,6 +1283,8 @@ void cleanup()
     cleanupBitmap(_instrumentHud.bmp);
     cleanupBitmap(_instrumentHudCopyLeft.bmp);
     cleanupBitmap(_instrumentHudCopyRight.bmp);
+    cleanupBitmap(_instrumentHudBrake.bmp);
+    cleanupBitmap(_instrumentHudBrakeCopy.bmp);
     cleanupTagBitmap(&_measureTag.tag);
 
     // Cleanup tags
@@ -1642,6 +1649,17 @@ bool initInstrumentHud()
 
     _instrumentHudCopyLeft.bmp = al_create_bitmap(_instrumentHud.width, _instrumentHud.height);
     _instrumentHudCopyRight.bmp = al_create_bitmap(_instrumentHud.width, _instrumentHud.height);
+
+    // Draw HUD Brake
+    _instrumentHudBrake.width = 44;
+    _instrumentHudBrake.height = 13;
+    _instrumentHudBrake.bmp = al_create_bitmap(_instrumentHudBrake.width, _instrumentHudBrake.height);
+
+    al_set_target_bitmap(_instrumentHudBrake.bmp);
+    al_clear_to_color(al_map_rgb(0x40, 0x40, 0x40));
+    al_set_target_backbuffer(_display);
+
+    _instrumentHudBrakeCopy.bmp = al_create_bitmap(_instrumentHudBrake.width, _instrumentHudBrake.height);
 
     return true;
 }
@@ -2162,6 +2180,13 @@ void drawInstrumentHud()
     int y = _displayHeight - _instrumentHud.height;
     al_draw_bitmap(_instrumentHudCopyLeft.bmp, 5, y - 5, 0);
     al_draw_bitmap(_instrumentHudCopyRight.bmp, x - 5, y - 5, 0);
+
+    // Draw HUD brake
+    if (hudShowBrake) {
+        x = (_displayWidth - _instrumentHudBrake.width) / 2;
+        y = _displayHeight - _instrumentHudBrake.height;
+        al_draw_bitmap(_instrumentHudBrakeCopy.bmp, x, y - 5, 0);
+    }
 }
 
 void render()
@@ -2674,6 +2699,27 @@ void updateHud()
             sprintf(text, " vs");
         }
         al_draw_text(_font, colour, 3, 23, 0, text);
+
+        al_set_target_backbuffer(_display);
+    }
+
+    if (_hudUpdate == 1 || _hudUpdate == -1) {
+        // Create HUD brake
+        al_set_target_bitmap(_instrumentHudBrakeCopy.bmp);
+        al_draw_bitmap(_instrumentHudBrake.bmp, 0, 0, 0);
+
+        char text[16];
+        hudShowBrake = false;
+        if (active) {
+            if (_chartServerData.brake == 1) {
+                al_draw_text(_font, colour, 6, 3, 0, "Park");
+                hudShowBrake = true;
+            }
+            else if (_chartServerData.brake == -1) {
+                al_draw_text(_font, colour, 3, 3, 0, "Brake");
+                hudShowBrake = true;
+            }
+        }
 
         al_set_target_backbuffer(_display);
     }

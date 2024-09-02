@@ -95,6 +95,9 @@ struct LocData {
     double flaps;
     double trim;
     double verticalSpeed;
+    double parkBrake;
+    double leftBrake;
+    double rightBrake;
 };
 
 struct WindData {

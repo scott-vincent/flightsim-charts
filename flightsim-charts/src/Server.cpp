@@ -359,6 +359,9 @@ void init()
     addDataDef(DEF_SELF, "Trailing Edge Flaps Left Angle", "Degrees");
     addDataDef(DEF_SELF, "Elevator Trim Pct", "Percent");
     addDataDef(DEF_SELF, "Vertical Speed", "feet per minute");
+    addDataDef(DEF_SELF, "Brake Parking Position", "bool");
+    addDataDef(DEF_SELF, "Brake Left Position", "percent");
+    addDataDef(DEF_SELF, "Brake Right Position", "percent");
     addDataDef(DEF_SELF, "Ambient Wind Direction", "Degrees");
     addDataDef(DEF_SELF, "Ambient Wind Velocity", "Knots");
 

@@ -5,7 +5,7 @@
 
 // Connects to chart-server (if there is one).
 // Comment out next line to disable chart-server.
-#define EXPERIMENTAL
+//#define EXPERIMENTAL
 
 
 const int Port = 52120;
@@ -74,14 +74,14 @@ void updateInstrumentHud(LocData* locData)
     _chartServerData.lon = locData->loc.lon;
     _chartServerData.heading = locData->heading;
     _chartServerData.headingMag = round(locData->headingMag);
-    _chartServerData.altitude = round(locData->alt);
+    _chartServerData.altitude = round(locData->altIndicated);
     _chartServerData.speed = round(locData->speed);
     _chartServerData.flaps = round(locData->flaps);
     _chartServerData.trim = round(locData->trim);
     _chartServerData.verticalSpeed = round(locData->verticalSpeed);
     _chartServerData.brake = locData->parkBrake;
     if (_chartServerData.brake == 0 && (locData->leftBrake > 5 || locData->rightBrake > 5)) {
-        _chartServerData.brake = -1;
+        _chartServerData.brake = 2;
     }
 
     //printf("hdg: %d, alt: %d, spd: %d, flaps: %d, trim: %d, vs: %d, brake: %d\n",

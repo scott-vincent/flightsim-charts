@@ -111,20 +111,36 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
             }
 
             if (_teleport.inProgress) {
-                stopFollowing();
-                if (_teleport.setAltSpeed) {
-                    // Include alt and speed
-                    if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_SNAPSHOT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _snapshot.dataSize, &_teleport) != 0) {
-                        printf("Failed to teleport aircraft\n");
+                if (_teleport.settleDelay > 0) {
+                    _teleport.settleDelay--;
+                    if (_teleport.settleDelay == 0) {
+                        // Keep repositioning aircraft to stop rolling
+                        SimConnect_SetDataOnSimObject(hSimConnect, DEF_TELEPORT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _teleport.dataSize, &_teleport);
+                        if (_locData.speed > 0.5) {
+                            _teleport.settleDelay = 5;
+                        }
+                        else {
+                            _teleport.inProgress = false;
+                        }
                     }
                 }
                 else {
-                    // Don't include alt and speed (want them to stay the same)
-                    if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_TELEPORT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _teleport.dataSize, &_teleport) != 0) {
-                        printf("Failed to teleport aircraft\n");
+                    stopFollowing();
+                    if (_teleport.setAltSpeed) {
+                        // Include alt and speed
+                        if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_SNAPSHOT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _snapshot.dataSize, &_teleport) != 0) {
+                            printf("Failed to teleport aircraft\n");
+                        }
+                        _teleport.settleDelay = 5;
+                    }
+                    else {
+                        // Don't include alt and speed (want them to stay the same)
+                        if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_TELEPORT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _teleport.dataSize, &_teleport) != 0) {
+                            printf("Failed to teleport aircraft\n");
+                        }
+                        _teleport.inProgress = false;
                     }
                 }
-                _teleport.inProgress = false;
             }
             else if (_snapshot.save) {
                 if (SimConnect_RequestDataOnSimObject(hSimConnect, REQ_SNAPSHOT, DEF_SNAPSHOT, SIMCONNECT_OBJECT_ID_USER, SIMCONNECT_PERIOD_ONCE, 0, 0, 0, 0) != 0) {
@@ -339,7 +355,7 @@ void init()
     addDataDef(DEF_SNAPSHOT, "Plane Bank Degrees", "Degrees");
     addDataDef(DEF_SNAPSHOT, "Plane Pitch Degrees", "Degrees");
     // Rest of SNAPSHOT data after teleport
-    addDataDef(DEF_SNAPSHOT, "Indicated Altitude", "Feet");
+    addDataDef(DEF_SNAPSHOT, "Plane Alt Above Ground", "Feet");
     addDataDef(DEF_SNAPSHOT, "Airspeed Indicated", "Knots");
     _snapshot.dataSize = _snapshotDataSize;
 
@@ -349,13 +365,14 @@ void init()
     addDataDef(DEF_SELF, "Plane Heading Degrees True", "Degrees");
     addDataDef(DEF_SELF, "Plane Bank Degrees", "Degrees");
     addDataDef(DEF_SELF, "Plane Pitch Degrees", "Degrees");
-    addDataDef(DEF_SELF, "Indicated Altitude", "Feet");
+    addDataDef(DEF_SELF, "Plane Alt Above Ground", "Feet");
     addDataDef(DEF_SELF, "Airspeed Indicated", "Knots");
     // Rest of SELF data after snapshot
     addDataDef(DEF_SELF, "Wing Span", "Feet");
     addDataDef(DEF_SELF, "Atc Id", "string");
     addDataDef(DEF_SELF, "Atc Model", "string");
     addDataDef(DEF_SELF, "Plane Heading Degrees Magnetic", "Degrees");
+    addDataDef(DEF_SELF, "Indicated Altitude", "Feet");
     addDataDef(DEF_SELF, "Trailing Edge Flaps Left Angle", "Degrees");
     addDataDef(DEF_SELF, "Elevator Trim Pct", "Percent");
     addDataDef(DEF_SELF, "Vertical Speed", "feet per minute");

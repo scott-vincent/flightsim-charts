@@ -816,7 +816,12 @@ void actionMenuItem()
         displayToChartPos(_teleport.pos.x, _teleport.pos.y, &_clickedPos);
         chartPosToLocation(_clickedPos.x, _clickedPos.y, &_teleport.loc);
         _teleport.heading = _aircraftData.heading;
-        _teleport.alt = 6;
+        if (_aircraftData.alt > 0 && _aircraftData.alt < 30) {
+            _teleport.alt = _aircraftData.alt;
+        }
+        else {
+            _teleport.alt = 6;
+        }
         _teleport.speed = 0;
         _teleport.setAltSpeed = true;
         _teleport.inProgress = true;
@@ -882,7 +887,12 @@ void actionMenuItem()
         }
         else {
             _teleport.heading = _aircraftData.heading;
-            _teleport.alt = 6;
+            if (_aircraftData.alt > 0 && _aircraftData.alt < 30) {
+                _teleport.alt = _aircraftData.alt;
+            }
+            else {
+                _teleport.alt = 6;
+            }
             _teleport.speed = 0;
             _teleport.setAltSpeed = true;
             _teleport.inProgress = true;
@@ -1567,6 +1577,7 @@ bool initAircraft()
     // Writing text uses excessive GPU so make a copy of the label as a
     // back buffer then we only need to update it when the text changes.
     _aircraftLabelBmpCopy = al_create_bitmap(_aircraftLabel.width, _aircraftLabel.height);
+    _teleport.settleDelay = 0;
 
     return true;
 }
@@ -2715,7 +2726,7 @@ void updateHud()
                 al_draw_text(_font, colour, 6, 3, 0, "Park");
                 hudShowBrake = true;
             }
-            else if (_chartServerData.brake == -1) {
+            else if (_chartServerData.brake == 2) {
                 al_draw_text(_font, colour, 3, 3, 0, "Brake");
                 hudShowBrake = true;
             }

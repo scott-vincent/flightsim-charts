@@ -92,6 +92,7 @@ struct LocData {
     char callsign[32];
     char model[32];
     double headingMag;
+    double altIndicated;
     double flaps;
     double trim;
     double verticalSpeed;
@@ -166,6 +167,7 @@ struct TeleportData {
     Position pos;
     bool inProgress;
     bool setAltSpeed;
+    int settleDelay;
 };
 
 struct SnapshotData {

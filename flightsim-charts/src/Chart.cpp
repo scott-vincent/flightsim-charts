@@ -53,6 +53,7 @@ extern FollowData _follow;
 extern int _range;
 extern bool _maxRange;
 extern bool _showAi;
+extern bool _noConnect;
 extern int _aiFixedCount;
 extern AI_Fixed _aiFixed[Max_AI_Fixed];
 extern bool _connected;
@@ -2320,7 +2321,7 @@ void render()
         drawWind();
     }
 
-    if (_settings.showInstrumentHud) {
+    if (_settings.showInstrumentHud && !_noConnect) {
         drawInstrumentHud();
     }
 }

@@ -131,7 +131,12 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
                         if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_SNAPSHOT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _snapshot.dataSize, &_teleport) != 0) {
                             printf("Failed to teleport aircraft\n");
                         }
-                        _teleport.settleDelay = 5;
+                        if (_teleport.alt < 50) {
+                            _teleport.settleDelay = 5;
+                        }
+                        else {
+                            _teleport.inProgress = false;
+                        }
                     }
                     else {
                         // Don't include alt and speed (want them to stay the same)

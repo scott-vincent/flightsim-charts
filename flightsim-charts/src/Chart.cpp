@@ -18,6 +18,7 @@ const char AircraftSmallFile[] = "images/aircraft_small.png";
 const char AircraftOtherFile[] = "images/aircraft_other.png";
 const char AircraftSmallOtherFile[] = "images/aircraft_small_other.png";
 const char LargeOtherFile[] = "images/aircraft_large_other.png";
+const char AircraftAbleFile[] = "images/aircraft_able.png";
 const char HelicopterOtherFile[] = "images/helicopter_other.png";
 const char GliderOtherFile[] = "images/glider_other.png";
 const char JetOtherFile[] = "images/small_jet_other.png";
@@ -369,6 +370,7 @@ void initVars()
     _aircraft.otherBmp = NULL;
     _aircraft.smallOtherBmp = NULL;
     _aircraft.largeOtherBmp = NULL;
+    _aircraft.ableBmp = NULL;
     _aircraft.helicopterOtherBmp = NULL;
     _aircraft.gliderOtherBmp = NULL;
     _aircraft.jetOtherBmp = NULL;
@@ -1272,6 +1274,7 @@ void cleanup()
     cleanupBitmap(_aircraft.otherBmp);
     cleanupBitmap(_aircraft.smallOtherBmp);
     cleanupBitmap(_aircraft.largeOtherBmp);
+    cleanupBitmap(_aircraft.ableBmp);
     cleanupBitmap(_aircraft.helicopterOtherBmp);
     cleanupBitmap(_aircraft.gliderOtherBmp);
     cleanupBitmap(_aircraft.vehicleBmp);
@@ -1458,6 +1461,13 @@ bool initAircraft()
         char msg[256];
         sprintf(msg, "Missing file: %s\n", LargeOtherFile);
         showMessage(msg, true);
+        return false;
+    }
+
+    _aircraft.ableBmp = al_load_bitmap(AircraftAbleFile);
+    if (!_aircraft.ableBmp) {
+        char msg[256];
+        sprintf(msg, "Missing file: %s\n", AircraftAbleFile);
         return false;
     }
 
@@ -1788,6 +1798,11 @@ void getIconData(char *model, char *callsign, int altitude, IconData* iconData, 
 
     if (strstr(Large_Airliner, prefixShort) != NULL) {
         iconData->bmp = _aircraft.largeOtherBmp;
+        return;
+    }
+
+    if (strncmp(callsign, "ABLE", 4) == 0) {
+        iconData->bmp = _aircraft.ableBmp;
         return;
     }
 

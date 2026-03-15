@@ -2,7 +2,8 @@ enum DEFINITION_ID {
     DEF_SELF,
     DEF_ALL,
     DEF_TELEPORT,
-    DEF_SNAPSHOT
+    DEF_SNAPSHOT,
+    DEF_CLEAN
 };
 
 enum REQUEST_ID {
@@ -14,5 +15,7 @@ enum REQUEST_ID {
 
 enum EVENT_ID {
     KEY_PAUSE_ON,
-    KEY_PAUSE_OFF
+    KEY_PAUSE_OFF,
+    KEY_TRIM_SET,
+    KEY_FLAPS_SET
 };

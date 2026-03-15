@@ -59,6 +59,7 @@ struct AircraftDrawData {
     ALLEGRO_BITMAP* helicopterOtherBmp;
     ALLEGRO_BITMAP* gliderOtherBmp;
     ALLEGRO_BITMAP* largeOtherBmp;
+    ALLEGRO_BITMAP* ableBmp;
     ALLEGRO_BITMAP* jetOtherBmp;
     ALLEGRO_BITMAP* militaryHeliBmp;
     ALLEGRO_BITMAP* militaryJetBmp;
@@ -99,6 +100,11 @@ struct LocData {
     double parkBrake;
     double leftBrake;
     double rightBrake;
+};
+
+struct CleanData {
+    double flaps;
+    double trim;
 };
 
 struct WindData {

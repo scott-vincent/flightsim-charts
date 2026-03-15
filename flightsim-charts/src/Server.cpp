@@ -159,6 +159,11 @@ void CALLBACK MyDispatchProc(SIMCONNECT_RECV* pData, DWORD cbData, void* pContex
                 if (SimConnect_SetDataOnSimObject(hSimConnect, DEF_SNAPSHOT, SIMCONNECT_OBJECT_ID_USER, 0, 0, _snapshot.dataSize, &_snapshot) != 0) {
                     printf("Failed to restore snapshot data\n");
                 }
+
+                // Set flaps and trim to 0
+                SimConnect_TransmitClientEvent(hSimConnect, 0, KEY_TRIM_SET, 0, SIMCONNECT_GROUP_PRIORITY_HIGHEST, SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY);
+                SimConnect_TransmitClientEvent(hSimConnect, 0, KEY_FLAPS_SET, 0, SIMCONNECT_GROUP_PRIORITY_HIGHEST, SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY);
+
                 _snapshot.restore = false;
             }
             else if (_snapshot.pause) {
@@ -398,6 +403,8 @@ void init()
 
     SimConnect_MapClientEventToSimEvent(hSimConnect, KEY_PAUSE_ON, "PAUSE_ON");
     SimConnect_MapClientEventToSimEvent(hSimConnect, KEY_PAUSE_OFF, "PAUSE_OFF");
+    SimConnect_MapClientEventToSimEvent(hSimConnect, KEY_TRIM_SET, "ELEVATOR_TRIM_SET");
+    SimConnect_MapClientEventToSimEvent(hSimConnect, KEY_FLAPS_SET, "FLAPS_UP");
 
     // Constant teleport values
     _teleport.bank = 0;

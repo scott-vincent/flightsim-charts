@@ -102,11 +102,6 @@ struct LocData {
     double rightBrake;
 };
 
-struct CleanData {
-    double flaps;
-    double trim;
-};
-
 struct WindData {
     double direction;
     double speed;

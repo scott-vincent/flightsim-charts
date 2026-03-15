@@ -2,8 +2,7 @@ enum DEFINITION_ID {
     DEF_SELF,
     DEF_ALL,
     DEF_TELEPORT,
-    DEF_SNAPSHOT,
-    DEF_CLEAN
+    DEF_SNAPSHOT
 };
 
 enum REQUEST_ID {
